@@ -57,6 +57,9 @@ type TqWebsocket struct {
 	config            WebSocketConfig
 	logger            *zap.Logger
 
+	// 全局事件发射器（用于穿透事件到 TQSDK 层）
+	globalEmitter *EventEmitter
+
 	// 事件回调
 	onMessage   func(data map[string]interface{})
 	onOpen      func()
@@ -377,6 +380,18 @@ func (ws *TqWebsocket) OnDeath(callback func(msg string)) {
 	ws.onDeath = callback
 }
 
+// SetGlobalEmitter 设置全局事件发射器（用于穿透事件到 TQSDK 层）
+func (ws *TqWebsocket) SetGlobalEmitter(emitter *EventEmitter) {
+	ws.globalEmitter = emitter
+}
+
+// emitGlobal 发射全局事件
+func (ws *TqWebsocket) emitGlobal(eventType EventType, data interface{}) {
+	if ws.globalEmitter != nil {
+		ws.globalEmitter.Emit(eventType, data)
+	}
+}
+
 // TqTradeWebsocket 交易 WebSocket
 type TqTradeWebsocket struct {
 	*TqWebsocket
@@ -422,14 +437,15 @@ func (tw *TqTradeWebsocket) initHandlers() {
 			}
 
 		case "rtn_brokers":
-			// 期货公司列表
-			// dump.V(data)
+			// 期货公司列表 - 穿透到 TQSDK 层
 			if brokers, ok := data["brokers"].([]interface{}); ok {
-				for _, broker := range brokers {
-					if brokerMap, ok := broker.(map[string]interface{}); ok {
-						tw.dm.MergeData(brokerMap, true, true)
+				brokerList := make([]string, 0, len(brokers))
+				for _, b := range brokers {
+					if broker, ok := b.(string); ok {
+						brokerList = append(brokerList, broker)
 					}
 				}
+				tw.emitGlobal(EventRtnBrokers, brokerList)
 			}
 
 		case "qry_settlement_info":

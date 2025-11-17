@@ -72,6 +72,9 @@ func (t *TQSDK) AddAccount(bid, userID, password string) (*TradeAccount, error) 
 	// 创建交易 WebSocket
 	ws := NewTqTradeWebsocket(urls, dm, t.config.WsConfig)
 
+	// 设置全局事件发射器，允许 WebSocket 层的事件穿透到 TQSDK 层
+	ws.SetGlobalEmitter(t.EventEmitter)
+
 	// 注册通知回调
 	ws.OnNotify(func(notify NotifyEvent) {
 		notify.BID = bid

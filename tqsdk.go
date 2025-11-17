@@ -176,6 +176,10 @@ func (t *TQSDK) InitMdWebsocket() error {
 	t.config.WsQuoteURL = wsQuoteURL
 	// 创建行情 WebSocket
 	t.quotesWs = NewTqQuoteWebsocket(t.config.WsQuoteURL, t.dm, t.config.WsConfig)
+
+	// 设置全局事件发射器，允许 WebSocket 层的事件穿透到 TQSDK 层
+	t.quotesWs.SetGlobalEmitter(t.EventEmitter)
+
 	return t.quotesWs.Init(false)
 }
 
