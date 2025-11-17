@@ -42,6 +42,7 @@ func NewLogger(config LogConfig) (*zap.Logger, error) {
 	if config.OutputPath == "" {
 		zapConfig.OutputPaths = []string{"stdout"}
 	}
+	zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
 	// JSON 格式更适合生产环境
 	if !config.Development {

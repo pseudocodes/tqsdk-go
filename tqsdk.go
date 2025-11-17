@@ -130,7 +130,7 @@ func NewTQSDK(tquser, tqpassword string, config TQSDKConfig) *TQSDK {
 	})
 
 	if config.AutoInit {
-		tqsdk.InitMdWebsocket()
+		// tqsdk.InitMdWebsocket()
 		tqsdk.InitTdWebsocket()
 	}
 
@@ -371,6 +371,24 @@ func (t *TQSDK) SetChart(payload map[string]interface{}) map[string]interface{} 
 
 	// 返回图表对象
 	chart := t.dm.SetDefault([]string{"charts", chartID}, NewChart(sendChart))
+	if chartMap, ok := chart.(map[string]interface{}); ok {
+		return chartMap
+	}
+
+	return make(map[string]interface{})
+}
+
+// GetChart 获取图表对象
+func (t *TQSDK) GetChart(chartID string) map[string]interface{} {
+	if chartID == "" {
+		return nil
+	}
+
+	chart := t.dm.GetByPath([]string{"charts", chartID})
+	if chart == nil {
+		return nil
+	}
+
 	if chartMap, ok := chart.(map[string]interface{}); ok {
 		return chartMap
 	}

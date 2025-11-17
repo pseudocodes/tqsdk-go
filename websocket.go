@@ -134,7 +134,7 @@ func (ws *TqWebsocket) Init(isReconnection bool) error {
 			zap.Error(err))
 		return err
 	}
-
+	conn.SetReadLimit(-1)
 	ws.conn = conn
 	ws.setStatus(StatusOpen)
 

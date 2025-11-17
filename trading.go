@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gookit/goutil/dump"
 	"go.uber.org/zap"
 )
 
@@ -30,6 +31,7 @@ func (t *TQSDK) AddAccount(bid, userID, password string) (*TradeAccount, error) 
 	// }
 
 	key := t.getAccountKey(bid, userID)
+	dump.V(key)
 
 	t.tradeAccountsMu.Lock()
 	defer t.tradeAccountsMu.Unlock()
@@ -96,7 +98,7 @@ func (t *TQSDK) AddAccount(bid, userID, password string) (*TradeAccount, error) 
 	}
 
 	t.tradeAccounts[key] = account
-
+	// dump.V(t.tradeAccounts)
 	t.logger.Info("Added trade account",
 		zap.String("bid", bid),
 		zap.String("user_id", userID))
@@ -129,7 +131,7 @@ func (t *TQSDK) RemoveAccount(bid, userID string) error {
 	return nil
 }
 
-// Login 登录期货账户
+// Login 登录期货账户, 注意是期货账户名, 不是天勤账户名
 func (t *TQSDK) Login(bid, userID, password string) error {
 
 	if bid == "" || userID == "" || password == "" {
@@ -144,9 +146,16 @@ func (t *TQSDK) Login(bid, userID, password string) error {
 
 	if account == nil {
 		// 账户不存在，先添加
+		t.logger.Debug("Account not found, adding account",
+			zap.String("bid", bid),
+			zap.String("user_id", userID))
 		var err error
 		account, err = t.AddAccount(bid, userID, password)
 		if err != nil {
+			t.logger.Error("Failed to add account",
+				zap.String("bid", bid),
+				zap.String("user_id", userID),
+				zap.Error(err))
 			return err
 		}
 	}
@@ -190,7 +199,6 @@ func (t *TQSDK) IsLogined(bid, userID string) bool {
 	if session == nil {
 		return false
 	}
-
 	sessionMap, ok := session.(map[string]interface{})
 	if !ok {
 		return false
@@ -202,6 +210,7 @@ func (t *TQSDK) IsLogined(bid, userID string) bool {
 	}
 
 	tradeMoreData := account.Dm.GetByPath([]string{"trade", userID, "trade_more_data"})
+	dump.V(tradeMoreData)
 	return tradeMoreData == false
 }
 
@@ -456,6 +465,7 @@ func (t *TQSDK) ConfirmSettlement(bid, userID string) error {
 		userID = t.auth.AuthID
 	}
 	account := t.getAccountRef(bid, userID)
+
 	if account == nil || account.Ws == nil {
 		return fmt.Errorf("账户不存在或未连接: %s/%s", bid, userID)
 	}
@@ -572,7 +582,10 @@ func (t *TQSDK) getAccountRef(bid, userID string) *TradeAccount {
 
 	t.tradeAccountsMu.RLock()
 	defer t.tradeAccountsMu.RUnlock()
-
+	t.logger.Debug("Getting account reference",
+		zap.String("bid", bid),
+		zap.String("user_id", userID),
+		zap.String("key", key))
 	return t.tradeAccounts[key]
 }
 
