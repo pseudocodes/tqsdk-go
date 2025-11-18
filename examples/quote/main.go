@@ -28,6 +28,12 @@ func QuoteSubscriptionExample() {
 	}
 	defer client.Close()
 
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
+
 	fmt.Println("==================== Quote 订阅示例 ====================")
 
 	fmt.Println("等待客户端初始化完成...")
@@ -87,6 +93,12 @@ func SingleKlineSubscriptionExample() {
 		return
 	}
 	defer client.Close()
+
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
 
 	fmt.Println("==================== 单合约 K线订阅示例 ====================")
 
@@ -191,6 +203,12 @@ func MultiKlineSubscriptionExample() {
 	}
 	defer client.Close()
 
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
+
 	fmt.Println("==================== 多合约 K线订阅示例 ====================")
 
 	// 订阅多个合约的 1分钟 K线
@@ -256,6 +274,12 @@ func TickSubscriptionExample() {
 		return
 	}
 	defer client.Close()
+
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
 
 	fmt.Println("==================== Tick 订阅示例 ====================")
 

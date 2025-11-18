@@ -15,6 +15,39 @@ import (
 	"go.uber.org/zap"
 )
 
+// Authenticator 认证器接口，定义了认证相关的所有操作
+type Authenticator interface {
+	// BaseHeader 返回包含认证信息的 HTTP Header
+	BaseHeader() http.Header
+
+	// Login 执行登录操作
+	Login() error
+
+	// GetTdUrl 获取指定期货公司的交易服务器地址
+	GetTdUrl(brokerID, accountID string) (*BrokerInfo, error)
+
+	// GetMdUrl 获取行情服务器地址
+	GetMdUrl(stock bool, backtest bool) (string, error)
+
+	// HasFeature 检查是否具有指定的功能权限
+	HasFeature(feature string) bool
+
+	// HasAccount 检查是否具有指定的账户权限
+	HasAccount(account string) bool
+
+	// HasMdGrants 检查是否有查看指定合约行情数据的权限
+	HasMdGrants(symbols ...string) error
+
+	// HasTdGrants 检查是否有交易指定合约的权限
+	HasTdGrants(symbol string) error
+
+	// // GetAuthID 获取认证ID
+	// GetAuthID() string
+
+	// // GetAccessToken 获取访问令牌
+	// GetAccessToken() string
+}
+
 var (
 	VERSION     = "3.8.1"
 	TQ_AUTH_URL = "https://auth.shinnytech.com"
@@ -457,4 +490,14 @@ func (t *TqAuth) HasTdGrants(symbol string) error {
 
 	// 不在任何已知交易所列表中
 	return fmt.Errorf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol)
+}
+
+// GetAuthID 获取认证ID
+func (t *TqAuth) GetAuthID() string {
+	return t.AuthID
+}
+
+// GetAccessToken 获取访问令牌
+func (t *TqAuth) GetAccessToken() string {
+	return t.accessToken
 }

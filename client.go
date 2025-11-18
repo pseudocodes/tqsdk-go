@@ -12,7 +12,7 @@ import (
 type Client struct {
 	config ClientConfig
 	logger *zap.Logger
-	auth   *TqAuth
+	Auth   Authenticator // 认证器接口，对外可见
 
 	// WebSocket 连接
 	quotesWs *TqQuoteWebsocket
@@ -122,22 +122,13 @@ func NewClient(ctx context.Context, username, password string, opts ...ClientOpt
 	client := &Client{
 		config:        config,
 		logger:        logger,
-		auth:          tqauth,
+		Auth:          tqauth,
 		dm:            NewDataManager(initialData),
 		quotesInfo:    make(map[string]map[string]interface{}),
 		tradeSessions: make(map[string]*TradeSession),
 		ctx:           clientCtx,
 		cancel:        cancel,
 	}
-
-	// 初始化 行情WebSocket
-	if err := client.initMarketData(); err != nil {
-		cancel()
-		return nil, err
-	}
-
-	// 创建 SeriesAPI
-	client.seriesAPI = NewSeriesAPI(client, client.dm, client.quotesWs)
 
 	return client, nil
 }
@@ -174,8 +165,18 @@ func WithDevelopment(development bool) ClientOption {
 	}
 }
 
-// initMarketData 初始化行情连接
-func (c *Client) initMarketData() error {
+// InitMarket 初始化行情功能（WebSocket 和 SeriesAPI）
+// 此方法是可选的，只有需要使用行情功能时才调用
+func (c *Client) InitMarket() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 如果已经初始化，直接返回
+	if c.quotesWs != nil {
+		c.logger.Warn("Market already initialized")
+		return nil
+	}
+
 	// 下载合约信息
 	go func() {
 		data, err := FetchJSON(c.config.SymbolsServerURL)
@@ -201,10 +202,10 @@ func (c *Client) initMarketData() error {
 	}()
 
 	// 获取行情服务器地址
-	wsQuoteURL, err := c.auth.GetMdUrl(true, false)
+	wsQuoteURL, err := c.Auth.GetMdUrl(true, false)
 	if err != nil {
 		c.logger.Error("Failed to get md url", zap.Error(err))
-		return NewError("initMarketData.GetMdUrl", err)
+		return NewError("InitMarket.GetMdUrl", err)
 	}
 	c.config.WsQuoteURL = wsQuoteURL
 
@@ -213,19 +214,32 @@ func (c *Client) initMarketData() error {
 
 	// 初始化连接
 	if err := c.quotesWs.Init(false); err != nil {
-		return NewError("initMarketData.Init", err)
+		return NewError("InitMarket.Init", err)
 	}
 
+	// 创建 SeriesAPI
+	c.seriesAPI = NewSeriesAPI(c, c.dm, c.quotesWs)
+
+	c.logger.Info("Market initialized successfully")
 	return nil
 }
 
 // Series 获取序列数据 API
+// 注意：使用前需要先调用 InitMarket() 初始化行情功能
 func (c *Client) Series() *SeriesAPI {
+	if c.seriesAPI == nil {
+		c.logger.Warn("SeriesAPI not initialized, call InitMarket() first")
+	}
 	return c.seriesAPI
 }
 
 // SubscribeQuote 订阅 Quote（全局订阅）
+// 注意：使用前需要先调用 InitMarket() 初始化行情功能
 func (c *Client) SubscribeQuote(ctx context.Context, symbols ...string) (*QuoteSubscription, error) {
+	if c.quotesWs == nil {
+		return nil, NewError("SubscribeQuote", fmt.Errorf("market not initialized, call InitMarket() first"))
+	}
+
 	c.quoteSubMu.Lock()
 	defer c.quoteSubMu.Unlock()
 

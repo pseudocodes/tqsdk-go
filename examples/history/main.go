@@ -26,6 +26,12 @@ func HistoryKlineWithLeftIDExample() {
 	}
 	defer client.Close()
 
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
+
 	fmt.Println("==================== 历史 K线订阅示例（使用 left_kline_id） ====================")
 
 	// 从指定的 K线 ID 开始订阅 8000 根历史 K线
@@ -127,6 +133,12 @@ func HistoryKlineWithFocusExample() {
 		return
 	}
 	defer client.Close()
+
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
 
 	fmt.Println("==================== 历史 K线订阅示例（使用 focus_datetime） ====================")
 

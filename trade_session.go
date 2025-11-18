@@ -51,8 +51,8 @@ func NewTradeSession(ctx context.Context, client *Client, broker, userID, passwo
 
 	// 快期模拟特殊处理
 	if broker == "快期模拟" {
-		userID = client.auth.AuthID
-		password = client.auth.AuthID
+		userID = client.Auth.(*TqAuth).AuthID
+		password = client.Auth.(*TqAuth).AuthID
 	}
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -74,7 +74,7 @@ func NewTradeSession(ctx context.Context, client *Client, broker, userID, passwo
 	dm := NewDataManager(initialData)
 
 	// 获取交易服务器 URL
-	brokerInfo, err := client.auth.GetTdUrl(broker, userID)
+	brokerInfo, err := client.Auth.GetTdUrl(broker, userID)
 	if err != nil {
 		cancel()
 		return nil, NewError("NewTradeSession.GetTdUrl", err)

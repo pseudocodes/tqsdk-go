@@ -47,7 +47,7 @@ type TQSDK struct {
 	config TQSDKConfig
 	logger *zap.Logger
 
-	auth *TqAuth
+	Auth Authenticator // 认证器接口，对外可见
 
 	// 数据管理
 	dm         *DataManager
@@ -107,12 +107,12 @@ func NewTQSDK(tquser, tqpassword string, config TQSDKConfig) *TQSDK {
 		"trade":  make(map[string]interface{}),
 	}
 
-	config.AccessToken = tqauth.accessToken
+	// config.AccessToken = tqauth.GetAccessToken()
 	config.WsConfig.Headers = tqauth.BaseHeader()
 
 	tqsdk := &TQSDK{
 		EventEmitter:       NewEventEmitter(),
-		auth:               tqauth,
+		Auth:               tqauth,
 		config:             config,
 		logger:             logger,
 		dm:                 NewDataManager(initialData),
@@ -168,7 +168,7 @@ func (t *TQSDK) InitMdWebsocket() error {
 		t.Emit(EventReady, nil)
 		t.Emit(EventRtnData, nil)
 	}()
-	wsQuoteURL, err := t.auth.GetMdUrl(true, false)
+	wsQuoteURL, err := t.Auth.GetMdUrl(true, false)
 	if err != nil {
 		t.logger.Error("Failed to get md url", zap.Error(err))
 		return err
@@ -318,12 +318,12 @@ func (t *TQSDK) SetChart(payload map[string]interface{}) map[string]interface{} 
 
 		if leftKlineID, ok := payload["left_kline_id"]; ok {
 			content["left_kline_id"] = leftKlineID
-			if !t.auth.HasFeature("td_dl") {
+			if !t.Auth.HasFeature("td_dl") {
 				t.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
 				return nil
 			}
 		} else if focusDatetime, ok := payload["focus_datetime"]; ok {
-			if !t.auth.HasFeature("td_dl") {
+			if !t.Auth.HasFeature("td_dl") {
 				t.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
 				return nil
 			}
@@ -348,13 +348,13 @@ func (t *TQSDK) SetChart(payload map[string]interface{}) map[string]interface{} 
 	}
 
 	if insList, ok := payload["ins_list"].([]string); ok {
-		if err := t.auth.HasMdGrants(insList...); err != nil {
+		if err := t.Auth.HasMdGrants(insList...); err != nil {
 			t.logger.Error("HasMdGrants error", zap.Error(err))
 			return nil
 		}
 		sendChart["ins_list"] = strings.Join(insList, ",")
 	} else if symbol, ok := payload["symbol"].(string); ok {
-		if err := t.auth.HasMdGrants(symbol); err != nil {
+		if err := t.Auth.HasMdGrants(symbol); err != nil {
 			t.logger.Error("HasMdGrants error", zap.Error(err))
 			return nil
 		}
@@ -404,7 +404,7 @@ func (t *TQSDK) GetKlines(symbol string, duration int64) map[string]interface{} 
 
 	ks := t.dm.GetByPath([]string{"klines", symbol, fmt.Sprintf("%d", duration)})
 	// dump.V(ks)
-	if ks == nil || (ks != nil && t.getLastID(ks) == -1) {
+	if ks == nil || t.getLastID(ks) == -1 {
 		// 初始化 K 线数据
 		t.dm.MergeData(map[string]interface{}{
 			"klines": map[string]interface{}{
