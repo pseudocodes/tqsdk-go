@@ -2,6 +2,7 @@ package tqsdk
 
 import (
 	"math"
+	"time"
 )
 
 // Quote 行情报价数据
@@ -161,10 +162,21 @@ type Chart struct {
 	LeftID   int64                  `json:"left_id"`   // 左边界K线ID
 	RightID  int64                  `json:"right_id"`  // 右边界K线ID
 	MoreData bool                   `json:"more_data"` // 是否有更多数据
+	Ready    bool                   `json:"ready"`     // 数据是否已准备好（分片传输完成）
 	State    map[string]interface{} `json:"state"`     // 图表状态
 
 	// 内部字段
 	epoch int64 // 数据版本
+}
+
+// ChartInfo Chart 信息
+type ChartInfo struct {
+	ChartID   string `json:"chart_id"`   // 图表ID
+	LeftID    int64  `json:"left_id"`    // 左边界K线ID
+	RightID   int64  `json:"right_id"`   // 右边界K线ID
+	MoreData  bool   `json:"more_data"`  // 是否有更多数据
+	Ready     bool   `json:"ready"`      // 数据是否已准备好（分片传输完成）
+	ViewWidth int    `json:"view_width"` // 视图宽度
 }
 
 // NewChart 创建新的图表对象
@@ -180,12 +192,17 @@ func NewChart(state map[string]interface{}) *Chart {
 	}
 }
 
-// KlineSeriesData K线序列数据
+// KlineSeriesData K线序列数据（带Chart信息）
 type KlineSeriesData struct {
-	TradingDayEndID   int64    `json:"trading_day_end_id"`
-	TradingDayStartID int64    `json:"trading_day_start_id"`
-	LastID            int64    `json:"last_id"`
-	Data              []*Kline `json:"data"` // K线数组
+	Symbol            string        `json:"symbol"`               // 合约代码
+	Duration          time.Duration `json:"duration"`             // K线周期
+	ChartID           string        `json:"chart_id"`             // 关联的Chart ID
+	Chart             *ChartInfo    `json:"chart"`                // Chart 信息
+	LastID            int64         `json:"last_id"`              // 最新K线ID
+	TradingDayStartID int64         `json:"trading_day_start_id"` // 交易日起始ID
+	TradingDayEndID   int64         `json:"trading_day_end_id"`   // 交易日结束ID
+	Data              []*Kline      `json:"data"`                 // K线数组（仅保留 ViewWidth 长度）
+	HasNewBar         bool          `json:"has_new_bar"`          // 是否有新K线
 
 	// 内部字段
 	epoch int64 // 数据版本
@@ -193,8 +210,12 @@ type KlineSeriesData struct {
 
 // TickSeriesData Tick序列数据
 type TickSeriesData struct {
-	LastID int64   `json:"last_id"`
-	Data   []*Tick `json:"data"` // Tick数组
+	Symbol    string     `json:"symbol"`      // 合约代码
+	ChartID   string     `json:"chart_id"`    // 关联的Chart ID
+	Chart     *ChartInfo `json:"chart"`       // Chart 信息
+	LastID    int64      `json:"last_id"`     // 最新Tick ID
+	Data      []*Tick    `json:"data"`        // Tick数组
+	HasNewBar bool       `json:"has_new_bar"` // 是否有新Tick
 
 	// 内部字段
 	epoch int64 // 数据版本
@@ -320,4 +341,148 @@ type NotifyEvent struct {
 	Content string `json:"content"` // 通知内容
 	BID     string `json:"bid"`     // 期货公司
 	UserID  string `json:"user_id"` // 用户ID
+}
+
+// Notification 通知
+type Notification struct {
+	Code    string `json:"code"`    // 通知代码
+	Level   string `json:"level"`   // 通知级别
+	Type    string `json:"type"`    // 通知类型
+	Content string `json:"content"` // 通知内容
+	BID     string `json:"bid"`     // 期货公司
+	UserID  string `json:"user_id"` // 用户ID
+}
+
+// PositionUpdate 持仓更新
+type PositionUpdate struct {
+	Symbol   string    `json:"symbol"`   // 合约代码
+	Position *Position `json:"position"` // 持仓信息
+}
+
+// MultiKlineSeriesData 多合约K线序列数据（已对齐）
+type MultiKlineSeriesData struct {
+	ChartID    string                    `json:"chart_id"`    // 图表ID
+	Duration   time.Duration             `json:"duration"`    // K线周期
+	MainSymbol string                    `json:"main_symbol"` // 主合约（第一个合约）
+	Symbols    []string                  `json:"symbols"`     // 所有合约列表
+	LeftID     int64                     `json:"left_id"`     // 左边界ID
+	RightID    int64                     `json:"right_id"`    // 右边界ID
+	ViewWidth  int                       `json:"view_width"`  // 视图宽度
+	Data       []AlignedKlineSet         `json:"data"`        // 对齐的K线数据集
+	HasNewBar  bool                      `json:"has_new_bar"` // 是否有新K线产生
+	Metadata   map[string]*KlineMetadata `json:"metadata"`    // 每个合约的元数据
+}
+
+// AlignedKlineSet 对齐的K线集合（一个时间点的多个合约）
+type AlignedKlineSet struct {
+	MainID    int64             `json:"main_id"`   // 主合约的K线ID
+	Timestamp time.Time         `json:"timestamp"` // 时间戳
+	Klines    map[string]*Kline `json:"klines"`    // symbol -> Kline
+}
+
+// KlineMetadata K线元数据
+type KlineMetadata struct {
+	Symbol            string `json:"symbol"`
+	LastID            int64  `json:"last_id"`
+	TradingDayStartID int64  `json:"trading_day_start_id"`
+	TradingDayEndID   int64  `json:"trading_day_end_id"`
+}
+
+// InsertOrderRequest 下单请求
+type InsertOrderRequest struct {
+	Symbol     string  // 合约代码（格式：EXCHANGE.INSTRUMENT，如 SHFE.au2512）
+	Direction  string  // 下单方向 BUY/SELL
+	Offset     string  // 开平标志 OPEN/CLOSE/CLOSETODAY
+	PriceType  string  // 价格类型 LIMIT/ANY
+	LimitPrice float64 // 委托价格
+	Volume     int64   // 下单手数
+}
+
+// 常量定义
+const (
+	// 方向
+	DirectionBuy  = "BUY"
+	DirectionSell = "SELL"
+
+	// 开平
+	OffsetOpen       = "OPEN"
+	OffsetClose      = "CLOSE"
+	OffsetCloseToday = "CLOSETODAY"
+
+	// 价格类型
+	PriceTypeLimit = "LIMIT"
+	PriceTypeAny   = "ANY"
+
+	// 订单状态
+	OrderStatusAlive    = "ALIVE"
+	OrderStatusFinished = "FINISHED"
+)
+
+// SeriesOptions 序列订阅选项
+type SeriesOptions struct {
+	Symbols   []string      // 合约列表
+	Duration  time.Duration // K线周期（0表示Tick）
+	ViewWidth int           // 视图宽度（最大 10000）
+	ChartID   string        // 图表ID（可选）
+
+	// 历史数据订阅参数（可选）
+	LeftKlineID   *int64     // 左边界 K线 ID（优先级最高）
+	FocusDatetime *time.Time // 焦点时间（需配合 FocusPosition 使用）
+	FocusPosition *int       // 焦点位置（需配合 FocusDatetime 使用，1=右侧，-1=左侧）
+}
+
+// SeriesData 序列数据（统一接口）
+type SeriesData struct {
+	IsMulti  bool                  // 是否为多合约
+	IsTick   bool                  // 是否为Tick数据
+	Symbols  []string              // 合约列表
+	Single   *KlineSeriesData      // 单合约K线数据
+	Multi    *MultiKlineSeriesData // 多合约K线数据
+	TickData *TickSeriesData       // Tick数据
+}
+
+// GetSymbolKlines 获取指定合约的K线数据
+func (sd *SeriesData) GetSymbolKlines(symbol string) *KlineSeriesData {
+	if sd.IsMulti && sd.Multi != nil {
+		// 从多合约数据中提取单个合约
+		result := &KlineSeriesData{
+			Symbol:    symbol,
+			Duration:  sd.Multi.Duration,
+			ChartID:   sd.Multi.ChartID,
+			HasNewBar: sd.Multi.HasNewBar,
+			Data:      make([]*Kline, 0),
+		}
+
+		if meta, ok := sd.Multi.Metadata[symbol]; ok {
+			result.LastID = meta.LastID
+			result.TradingDayStartID = meta.TradingDayStartID
+			result.TradingDayEndID = meta.TradingDayEndID
+		}
+
+		// 提取该合约的K线
+		for _, set := range sd.Multi.Data {
+			if kline, ok := set.Klines[symbol]; ok {
+				result.Data = append(result.Data, kline)
+			}
+		}
+
+		return result
+	} else if !sd.IsMulti && sd.Single != nil {
+		return sd.Single
+	}
+	return nil
+}
+
+// UpdateInfo 数据更新信息
+type UpdateInfo struct {
+	HasNewBar         bool             // 是否有新 K线/Tick
+	NewBarIDs         map[string]int64 // 新 K线的 ID（symbol -> id）
+	HasBarUpdate      bool             // 是否有 K线更新（最后一根）
+	ChartRangeChanged bool             // Chart 范围是否变化
+	OldLeftID         int64            // 旧左边界
+	OldRightID        int64            // 旧右边界
+	NewLeftID         int64            // 新左边界
+	NewRightID        int64            // 新右边界
+	HasChartSync      bool             // Chart 是否同步完成
+	ChartReady        bool             // Chart数据传输是否完成（分片传输场景）
 }

@@ -62,7 +62,7 @@ func (t *TQSDK) AddAccount(bid, userID, password string) (*TradeAccount, error) 
 	})
 	// dump.V(t.auth)
 	// 获取交易服务器 URL
-	brokerInfo, err := t.auth.GetTdUrl(bid, userID)
+	brokerInfo, err := t.Auth.GetTdUrl(bid, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取期货公司 URL 失败: %w", err)
 	}
@@ -138,8 +138,8 @@ func (t *TQSDK) Login(bid, userID, password string) error {
 		return fmt.Errorf("bid, userID, password 不能为空")
 	}
 	if bid == "快期模拟" {
-		userID = t.auth.AuthID
-		password = t.auth.AuthID
+		userID = t.Auth.(*TqAuth).AuthID
+		password = t.Auth.(*TqAuth).AuthID
 	}
 
 	account := t.getAccountRef(bid, userID)
@@ -187,7 +187,7 @@ func (t *TQSDK) Login(bid, userID, password string) error {
 func (t *TQSDK) IsLogined(bid, userID string) bool {
 
 	if bid == "快期模拟" {
-		userID = t.auth.AuthID
+		userID = t.Auth.(*TqAuth).AuthID
 	}
 
 	account := t.getAccountRef(bid, userID)
@@ -462,7 +462,7 @@ func (t *TQSDK) CancelOrder(bid, userID, orderID string) error {
 // ConfirmSettlement 确认结算单
 func (t *TQSDK) ConfirmSettlement(bid, userID string) error {
 	if bid == "快期模拟" {
-		userID = t.auth.AuthID
+		userID = t.Auth.(*TqAuth).AuthID
 	}
 	account := t.getAccountRef(bid, userID)
 
