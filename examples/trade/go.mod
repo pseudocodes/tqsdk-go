@@ -1,10 +1,10 @@
-module trade
+module github.com/pseudocodes/tqsdk-go/examples/trade
 
 go 1.21
 
-replace github.com/pseudocodes/tqsdk-go => ../..
+replace github.com/pseudocodes/tqsdk-go => ../../
 
-require github.com/pseudocodes/tqsdk-go v0.0.0-00010101000000-000000000000
+require github.com/pseudocodes/tqsdk-go v0.0.0
 
 require (
 	github.com/coder/websocket v1.8.12 // indirect

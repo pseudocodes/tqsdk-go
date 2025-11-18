@@ -1,4 +1,4 @@
-module github.com/pseudocodes/tqsdk-go/examples/quote
+module github.com/pseudocodes/tqsdk-go/examples/datamanager
 
 go 1.21
 

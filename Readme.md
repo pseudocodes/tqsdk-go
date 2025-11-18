@@ -1,1082 +1,383 @@
-# TQSDK-GO
+# TQSDK-GO V2
 
-天勤 [DIFF 协议](https://www.shinnytech.com/diff/) 的 Go 语言封装。
+天勤 [DIFF 协议](https://www.shinnytech.com/diff/) 的 Go 语言封装 - 全新重构版本
 
-提供核心协议 API 数据交互 
+TQSDK-GO V2 提供了类型安全、并发安全、易用的 Go 语言 API，支持期货行情订阅、K线数据获取、交易操作等功能。
 
-`TQSDK-GO` 支持以下功能：
+## 特性
 
-* 查询合约行情
-* 查询合约 K线图、Tick图、盘口报价
-* 登录期货交易账户
-* 查看账户资金、持仓记录、委托单记录
+- **类型安全**：强类型 API 设计，消除 `map[string]interface{}` 的使用
+- **并发安全**：完善的并发控制和数据竞争保护
+- **易用性**：符合 Go 语言习惯的 API 设计，支持 Context、Channel、Callback 等多种模式
+- **高性能**：优化的数据管理和内存使用，支持 ViewWidth 控制
+- **多合约对齐**：基于 TQSDK 协议的 binding 机制，自动对齐不同合约的 K线数据
 
 ## 安装
 
 ```bash
-go get -u github.com/pseudocodes/tqsdk-go
+go get github.com/pseudocodes/tqsdk-go@latest
 ```
 
-## 使用
+## 快速开始
 
-### 初始化
+### 基础示例
 
 ```go
 package main
 
 import (
+    "context"
     "fmt"
-    tqsdk "github.com/pseudocodes/tqsdk-go"
-)
-
-func main() {
-    // 使用默认配置
-    config := tqsdk.DefaultTQSDKConfig()
-    
-    // 创建 TQSDK 实例
-    sdk := tqsdk.NewTQSDK("your_user_id", "your_password", config)
-    defer sdk.Close()
-    
-    // ... 业务逻辑
-}
-```
-
-### 自定义配置初始化
-
-```go
-// 自定义配置
-config := tqsdk.TQSDKConfig{
-    SymbolsServerURL: "https://openmd.shinnytech.com/t/md/symbols/latest.json",
-    AutoInit:         true,
-    LogConfig: tqsdk.LogConfig{
-        Level:       "info",
-        OutputPath:  "stdout",
-        Development: false,
-    },
-}
-
-sdk := tqsdk.NewTQSDK("your_user_id", "your_password", config)
-defer sdk.Close()
-```
-
-### 事件监听
-
-```go
-// 添加事件监听
-sdk.On(eventName, callback)
-
-// 取消事件监听
-sdk.Off(eventName, callback)
-```
-
-支持的事件：
-
-| 事件名称 | 回调函数参数 | 事件触发说明 |
-|---------|-------------|-------------|
-| ready | nil | 收到合约基础数据 |
-| rtn_brokers | []string 期货公司列表 | 收到期货公司列表 |
-| notify | NotifyEvent 通知对象 | 收到通知对象 |
-| rtn_data | nil | 数据更新（每一次数据更新触发） |
-| error | error | 发生错误 |
-
-注意：监听 `rtn_data` 事件可以实时对行情数据变化作出响应。
-
-## API 参考
-
-### 创建实例
-
-#### NewTQSDK
-
-创建新的 TQSDK 实例。
-
-**函数签名：**
-```go
-func NewTQSDK(tquser, tqpassword string, config TQSDKConfig) *TQSDK
-```
-
-**参数：**
-- `tquser` - 天勤账户用户名
-- `tqpassword` - 天勤账户密码
-- `config` - TQSDK 配置对象
-
-**配置选项：**
-- `SymbolsServerURL` - 合约服务地址，默认：`"https://openmd.shinnytech.com/t/md/symbols/latest.json"`
-- `AutoInit` - 自动初始化，默认：`true`
-- `ClientSystemInfo` - 客户端系统信息（可选）
-- `ClientAppID` - 客户端应用ID（可选）
-- `LogConfig` - 日志配置
-- `WsConfig` - WebSocket 配置
-
-**示例：**
-```go
-config := tqsdk.DefaultTQSDKConfig()
-config.LogConfig.Level = "debug"
-
-sdk := tqsdk.NewTQSDK("username", "password", config)
-defer sdk.Close()
-
-sdk.On(tqsdk.EventReady, func(data interface{}) {
-    fmt.Println("SDK 已就绪")
-    quote := sdk.GetQuote("SHFE.au2512")
-    if lastPrice, ok := quote["last_price"].(float64); ok {
-        fmt.Printf("最新价: %.2f\n", lastPrice)
-    }
-})
-```
-
----
-
-### 行情相关
-
-#### GetQuote
-
-根据合约代码获取合约行情对象。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetQuote(symbol string) map[string]interface{}
-```
-
-**参数：**
-- `symbol` - 合约代码，格式：`"交易所.合约代码"`，例如：`"SHFE.au2512"`
-
-**返回：**
-返回合约行情数据 map，包含以下字段：
-- `last_price` - 最新价
-- `bid_price1` - 买一价
-- `ask_price1` - 卖一价
-- `volume` - 成交量
-- `open_interest` - 持仓量
-- `datetime` - 行情时间
-- `pre_settlement` - 昨结算价
-- 更多字段参见数据结构文档
-
-**示例：**
-```go
-sdk.On(tqsdk.EventReady, func(data interface{}) {
-    quote := sdk.GetQuote("SHFE.au2512")
-    if lastPrice, ok := quote["last_price"].(float64); ok {
-        fmt.Printf("最新价: %.2f\n", lastPrice)
-    }
-})
-
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsChanging([]string{"quotes", "SHFE.au2512"}) {
-        quote := sdk.GetQuote("SHFE.au2512")
-        fmt.Println("行情更新:", quote["last_price"])
-    }
-})
-```
-
-#### SubscribeQuote
-
-手动订阅合约行情。
-
-**函数签名：**
-```go
-func (t *TQSDK) SubscribeQuote(quotes []string)
-```
-
-**参数：**
-- `quotes` - 合约代码列表
-
-**示例：**
-```go
-sdk.SubscribeQuote([]string{"SHFE.au2512"})
-sdk.SubscribeQuote([]string{"SHFE.au2512", "DCE.m2512", "CZCE.CF512"})
-```
-
-#### GetQuotesByInput
-
-根据输入字符串查询合约列表。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetQuotesByInput(input string, filterOption map[string]bool) []string
-```
-
-**参数：**
-- `input` - 搜索关键词
-- `filterOption` - 查询条件，支持以下选项：
-  - `symbol` - 是否根据合约ID匹配，默认：`true`
-  - `pinyin` - 是否根据拼音匹配，默认：`true`
-  - `include_expired` - 匹配结果是否包含已下市合约，默认：`false`
-  - `future` - 匹配结果是否包含期货合约，默认：`true`
-  - `future_index` - 匹配结果是否包含期货指数，默认：`false`
-  - `future_cont` - 匹配结果是否包含期货主连，默认：`false`
-  - `option` - 匹配结果是否包含期权，默认：`false`
-  - `combine` - 匹配结果是否包含组合，默认：`false`
-
-**返回：**
-返回符合条件的合约代码列表。
-
-**示例：**
-```go
-sdk.On(tqsdk.EventReady, func(data interface{}) {
-    // 搜索黄金合约
-    filterOption := map[string]bool{
-        "future": true,
-    }
-    results := sdk.GetQuotesByInput("au", filterOption)
-    fmt.Printf("找到 %d 个合约\n", len(results))
-    
-    // 搜索期货指数和主连
-    filterOption2 := map[string]bool{
-        "future":       false,
-        "future_index": true,
-        "future_cont":  true,
-    }
-    results2 := sdk.GetQuotesByInput("au", filterOption2)
-    fmt.Println("指数和主连:", results2)
-})
-```
-
----
-
-### K线和Tick数据
-
-#### SetChart
-
-请求 K 线图表数据。
-
-**函数签名：**
-```go
-func (t *TQSDK) SetChart(payload map[string]interface{}) map[string]interface{}
-```
-
-**参数：**
-- `chart_id` - 图表 ID（可选）
-- `symbol` - 合约代码
-- `duration` - 图表周期，单位：纳秒。例如：`60 * 1e9` 表示 1 分钟
-- `view_width` - 图表柱子宽度（可选）
-- `left_kline_id` - 指定 K 线 ID，向右请求 view_width 个数据（可选）
-- `trading_day_start` - 指定交易日，返回对应的数据（可选）
-- `trading_day_count` - 请求交易日天数（可选）
-- `focus_datetime` - 使得指定日期的 K 线位于屏幕第 M 个柱子的位置（可选）
-- `focus_position` - 使得指定日期的 K 线位于屏幕第 M 个柱子的位置（可选）
-
-**返回：**
-返回图表对象，包含 `left_id`、`right_id`、`more_data` 等字段。
-
-**示例：**
-```go
-chartPayload := map[string]interface{}{
-    "symbol":     "SHFE.au2512",
-    "duration":   60 * 1e9, // 1分钟
-    "view_width": 100,
-}
-chart := sdk.SetChart(chartPayload)
-fmt.Printf("图表ID: %v\n", chart["chart_id"])
-
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if chart != nil {
-        fmt.Println("right_id:", chart["right_id"])
-    }
-})
-```
-
-#### GetKlines
-
-获取 K 线序列数据（原始 map 格式）。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetKlines(symbol string, duration int64) map[string]interface{}
-```
-
-**参数：**
-- `symbol` - 合约代码
-- `duration` - K 线周期（纳秒）
-
-**返回：**
-返回 K 线数据 map，包含 `data`、`last_id` 等字段。
-
-#### GetKlinesData
-
-获取 K 线序列数据（结构化数组格式，推荐使用）。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetKlinesData(symbol string, duration int64) (*KlineSeriesData, error)
-```
-
-**参数：**
-- `symbol` - 合约代码
-- `duration` - K 线周期（纳秒）
-
-**返回：**
-返回结构化的 K 线数据对象，包含：
-- `LastID` - 最后一根 K 线的 ID
-- `Data` - K 线数组，每个元素包含：
-  - `ID` - K 线 ID
-  - `Datetime` - K 线时间
-  - `Open` - 开盘价
-  - `High` - 最高价
-  - `Low` - 最低价
-  - `Close` - 收盘价
-  - `Volume` - 成交量
-  - `OpenOI` - 起始持仓量
-  - `CloseOI` - 结束持仓量
-
-**示例：**
-```go
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsChanging([]string{"klines", "SHFE.au2512", "60000000000"}) {
-        klinesData, err := sdk.GetKlinesData("SHFE.au2512", 60*1e9)
-        if err != nil {
-            fmt.Println("获取K线失败:", err)
-            return
-        }
-        if len(klinesData.Data) > 0 {
-            lastKline := klinesData.Data[len(klinesData.Data)-1]
-            fmt.Printf("最新K线 - 收盘价: %.2f\n", lastKline.Close)
-        }
-    }
-})
-```
-
-#### GetTicks
-
-获取 Tick 序列数据（原始 map 格式）。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTicks(symbol string) map[string]interface{}
-```
-
-**参数：**
-- `symbol` - 合约代码
-
-**返回：**
-返回 Tick 数据 map，包含 `data`、`last_id` 等字段。
-
-#### GetTicksData
-
-获取 Tick 序列数据（结构化数组格式，推荐使用）。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTicksData(symbol string) (*TickSeriesData, error)
-```
-
-**参数：**
-- `symbol` - 合约代码
-
-**返回：**
-返回结构化的 Tick 数据对象，包含：
-- `LastID` - 最后一个 Tick 的 ID
-- `Data` - Tick 数组，每个元素包含：
-  - `ID` - Tick ID
-  - `Datetime` - Tick 时间
-  - `LastPrice` - 最新价
-  - `Average` - 均价
-  - `Volume` - 成交量
-  - `BidPrice1`、`AskPrice1` - 买一价、卖一价
-  - 更多字段参见 Tick 结构体定义
-
-**示例：**
-```go
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsChanging([]string{"ticks", "SHFE.au2512"}) {
-        ticksData, err := sdk.GetTicksData("SHFE.au2512")
-        if err != nil {
-            fmt.Println("获取Tick失败:", err)
-            return
-        }
-        if len(ticksData.Data) > 0 {
-            lastTick := ticksData.Data[len(ticksData.Data)-1]
-            fmt.Printf("最新Tick - 价格: %.2f\n", lastTick.LastPrice)
-        }
-    }
-})
-```
-
----
-
-### 交易相关
-
-#### Login
-
-登录期货账户。
-
-**函数签名：**
-```go
-func (t *TQSDK) Login(bid, userID, password string) error
-```
-
-**参数：**
-- `bid` - 期货公司名称，例如：`"快期模拟"`
-- `userID` - 账户名
-- `password` - 密码
-
-**返回：**
-返回错误信息，成功返回 nil。
-
-**示例：**
-```go
-bid := "快期模拟"
-userID := "your_account"
-password := "your_password"
-
-err := sdk.Login(bid, userID, password)
-if err != nil {
-    fmt.Println("登录失败:", err)
-    return
-}
-
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsLogined(bid, userID) {
-        fmt.Println("登录成功")
-    }
-})
-```
-
-#### IsLogined
-
-判断账户是否已登录。
-
-**函数签名：**
-```go
-func (t *TQSDK) IsLogined(bid, userID string) bool
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-
-**返回：**
-返回 true 表示已登录，false 表示未登录。
-
-#### GetAccount
-
-获取账户资金信息。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetAccount(bid, userID string) map[string]interface{}
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-
-**返回：**
-返回账户资金信息 map，包含：
-- `balance` - 账户权益
-- `available` - 可用资金
-- `curr_margin` - 当前保证金
-- `risk_ratio` - 风险度
-- 更多字段参见 Account 结构体定义
-
-**示例：**
-```go
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsLogined(bid, userID) {
-        account := sdk.GetAccount(bid, userID)
-        if balance, ok := account["balance"].(float64); ok {
-            fmt.Printf("账户权益: %.2f\n", balance)
-        }
-        if available, ok := account["available"].(float64); ok {
-            fmt.Printf("可用资金: %.2f\n", available)
-        }
-    }
-})
-```
-
-#### GetPositions
-
-获取账户全部持仓信息。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetPositions(bid, userID string) map[string]interface{}
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-
-**返回：**
-返回持仓信息 map，key 为合约代码，value 为持仓详情。
-
-**示例：**
-```go
-positions := sdk.GetPositions(bid, userID)
-for symbol, posData := range positions {
-    if posMap, ok := posData.(map[string]interface{}); ok {
-        fmt.Printf("合约: %s\n", symbol)
-        if volumeLong, ok := posMap["volume_long_today"].(float64); ok {
-            fmt.Printf("  今多: %.0f\n", volumeLong)
-        }
-        if floatProfit, ok := posMap["float_profit"].(float64); ok {
-            fmt.Printf("  浮动盈亏: %.2f\n", floatProfit)
-        }
-    }
-}
-```
-
-#### GetPosition
-
-获取指定合约的持仓信息。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetPosition(bid, userID, symbol string) map[string]interface{}
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-- `symbol` - 合约代码
-
-**返回：**
-返回该合约的持仓信息。
-
-**示例：**
-```go
-pos := sdk.GetPosition(bid, userID, "SHFE.au2512")
-if pos != nil {
-    if volumeLong, ok := pos["volume_long_today"].(float64); ok {
-        fmt.Printf("多头持仓: %.0f\n", volumeLong)
-    }
-}
-```
-
-#### InsertOrder
-
-下单。
-
-**函数签名：**
-```go
-func (t *TQSDK) InsertOrder(bid, userID, exchangeID, instrumentID, direction, offset, priceType string, limitPrice float64, volume int64) (map[string]interface{}, error)
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-- `exchangeID` - 交易所代码，例如：`"SHFE"`
-- `instrumentID` - 合约代码，例如：`"au2512"`
-- `direction` - 方向，`"BUY"` 或 `"SELL"`
-- `offset` - 开平标志，`"OPEN"`、`"CLOSE"` 或 `"CLOSETODAY"`
-- `priceType` - 价格类型，`"LIMIT"` 限价单或 `"ANY"` 市价单
-- `limitPrice` - 委托价格
-- `volume` - 委托手数
-
-**返回：**
-返回委托单信息和错误信息。
-
-**示例：**
-```go
-order, err := sdk.InsertOrder(
-    bid, userID,
-    "SHFE", "au2512",
-    "BUY", "OPEN", "LIMIT",
-    500.00, 1,
-)
-if err != nil {
-    fmt.Println("下单失败:", err)
-} else {
-    fmt.Printf("下单成功，订单ID: %v\n", order["order_id"])
-}
-```
-
-#### CancelOrder
-
-撤销委托单。
-
-**函数签名：**
-```go
-func (t *TQSDK) CancelOrder(bid, userID, orderID string) error
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-- `orderID` - 委托单 ID
-
-**返回：**
-返回错误信息，成功返回 nil。
-
-**示例：**
-```go
-err := sdk.CancelOrder(bid, userID, "order_id_here")
-if err != nil {
-    fmt.Println("撤单失败:", err)
-} else {
-    fmt.Println("撤单成功")
-}
-```
-
-#### GetOrders
-
-获取账户全部委托单信息。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetOrders(bid, userID string) map[string]interface{}
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-
-**返回：**
-返回委托单信息 map，key 为委托单 ID，value 为委托单详情。
-
-**示例：**
-```go
-orders := sdk.GetOrders(bid, userID)
-for orderID, orderData := range orders {
-    if orderMap, ok := orderData.(map[string]interface{}); ok {
-        if status, ok := orderMap["status"].(string); ok && status == "ALIVE" {
-            fmt.Printf("活动委托单: %s\n", orderID)
-        }
-    }
-}
-```
-
-#### GetOrder
-
-获取指定委托单信息。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetOrder(bid, userID, orderID string) map[string]interface{}
-```
-
-#### GetOrdersBySymbol
-
-获取指定合约的所有委托单。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetOrdersBySymbol(bid, userID, symbol string) map[string]interface{}
-```
-
-#### GetTrades
-
-获取账户全部成交记录。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTrades(bid, userID string) map[string]interface{}
-```
-
-#### GetTrade
-
-获取指定成交记录。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTrade(bid, userID, tradeID string) map[string]interface{}
-```
-
-#### GetTradesByOrder
-
-获取指定委托单的所有成交记录。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTradesByOrder(bid, userID, orderID string) map[string]interface{}
-```
-
-#### GetTradesBySymbol
-
-获取指定合约的所有成交记录。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetTradesBySymbol(bid, userID, symbol string) map[string]interface{}
-```
-
-#### ConfirmSettlement
-
-确认结算单。每个交易日需要确认一次结算单后才能进行交易。
-
-**函数签名：**
-```go
-func (t *TQSDK) ConfirmSettlement(bid, userID string) error
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-
-**示例：**
-```go
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsLogined(bid, userID) {
-        err := sdk.ConfirmSettlement(bid, userID)
-        if err != nil {
-            fmt.Println("确认结算单失败:", err)
-        } else {
-            fmt.Println("已确认结算单")
-        }
-    }
-})
-```
-
-#### GetHisSettlements
-
-获取历史结算单列表。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetHisSettlements(bid, userID string) map[string]interface{}
-```
-
-#### GetHisSettlement
-
-获取指定日期的历史结算单。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetHisSettlement(bid, userID, tradingDay string) map[string]interface{}
-```
-
-**参数：**
-- `bid` - 期货公司名称
-- `userID` - 账户名
-- `tradingDay` - 交易日期，格式：`"20231201"`
-
-#### QueryHisSettlement
-
-查询历史结算单。
-
-**函数签名：**
-```go
-func (t *TQSDK) QueryHisSettlement(bid, userID, tradingDay string) error
-```
-
----
-
-### 工具方法
-
-#### IsChanging
-
-判断某个数据路径是否在最近一次更新中有变动。
-
-**函数签名：**
-```go
-func (t *TQSDK) IsChanging(pathArray []string) bool
-```
-
-**参数：**
-- `pathArray` - 数据路径数组，例如：`[]string{"quotes", "SHFE.au2512"}`
-
-**返回：**
-返回 true 表示有变动，false 表示无变动。
-
-**示例：**
-```go
-sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-    if sdk.IsChanging([]string{"quotes", "SHFE.au2512"}) {
-        quote := sdk.GetQuote("SHFE.au2512")
-        fmt.Println("行情更新:", quote["last_price"])
-    }
-    
-    if sdk.IsChanging([]string{"trade", userID, "accounts", "CNY"}) {
-        account := sdk.GetAccount(bid, userID)
-        fmt.Println("账户资金更新:", account["balance"])
-    }
-})
-```
-
-#### GetByPath
-
-根据路径数组获取数据。
-
-**函数签名：**
-```go
-func (t *TQSDK) GetByPath(pathArray []string) interface{}
-```
-
-**参数：**
-- `pathArray` - 数据路径数组
-
-**返回：**
-返回路径对应的数据对象。
-
-**示例：**
-```go
-// 获取某个合约的最新价
-lastPrice := sdk.GetByPath([]string{"quotes", "SHFE.au2512", "last_price"})
-
-// 推荐使用 GetQuote 方法
-quote := sdk.GetQuote("SHFE.au2512")
-lastPrice := quote["last_price"]
-```
-
----
-
-## 完整示例
-
-### 行情查询示例
-
-```go
-package main
-
-import (
-    "fmt"
-    "os"
-    tqsdk "github.com/pseudocodes/tqsdk-go"
-)
-
-func main() {
-    // 创建配置
-    config := tqsdk.DefaultTQSDKConfig()
-    config.LogConfig.Level = "info"
-    config.AutoInit = true
-
-    // 从环境变量获取账号信息
-    userID := os.Getenv("SHINNYTECH_ID")
-    password := os.Getenv("SHINNYTECH_PW")
-
-    // 创建 TQSDK 实例
-    sdk := tqsdk.NewTQSDK(userID, password, config)
-    defer sdk.Close()
-
-    fmt.Println("TQSDK Go 示例 - 行情查询")
-
-    // 注册 ready 事件
-    sdk.On(tqsdk.EventReady, func(data interface{}) {
-        fmt.Println("SDK 已就绪，合约信息已加载")
-
-        // 获取合约行情
-        symbol := "SHFE.au2512"
-        quote := sdk.GetQuote(symbol)
-
-        fmt.Printf("\n【合约信息】%s\n", symbol)
-        if productName, ok := quote["product_short_name"].(string); ok {
-            fmt.Printf("  品种名称: %s\n", productName)
-        }
-        if volumeMultiple, ok := quote["volume_multiple"].(float64); ok {
-            fmt.Printf("  合约乘数: %.0f\n", volumeMultiple)
-        }
-        if priceTick, ok := quote["price_tick"].(float64); ok {
-            fmt.Printf("  最小变动价位: %.2f\n", priceTick)
-        }
-
-        fmt.Printf("\n【实时行情】\n")
-        if lastPrice, ok := quote["last_price"].(float64); ok {
-            fmt.Printf("  最新价: %.2f\n", lastPrice)
-        }
-        if bidPrice1, ok := quote["bid_price1"].(float64); ok {
-            fmt.Printf("  买一价: %.2f\n", bidPrice1)
-        }
-        if askPrice1, ok := quote["ask_price1"].(float64); ok {
-            fmt.Printf("  卖一价: %.2f\n", askPrice1)
-        }
-
-        // 订阅多个合约
-        symbols := []string{"SHFE.au2512", "DCE.m2512", "CZCE.CF512"}
-        sdk.SubscribeQuote(symbols)
-        fmt.Printf("\n已订阅合约: %v\n", symbols)
-
-        // 请求 K 线数据
-        chartPayload := map[string]interface{}{
-            "symbol":     "SHFE.au2512",
-            "duration":   60 * 1e9, // 1分钟
-            "view_width": 100,
-        }
-        chart := sdk.SetChart(chartPayload)
-        fmt.Printf("\n已请求 K 线图表，chart_id: %v\n", chart["chart_id"])
-    })
-
-    // 注册数据更新事件
-    sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-        // 检查特定合约是否有更新
-        if sdk.IsChanging([]string{"quotes", "SHFE.au2512"}) {
-            quote := sdk.GetQuote("SHFE.au2512")
-            if lastPrice, ok := quote["last_price"].(float64); ok {
-                if datetime, ok := quote["datetime"].(string); ok {
-                    fmt.Printf("[%s] SHFE.au2512 更新 - 最新价: %.2f\n", datetime, lastPrice)
-                }
-            }
-        }
-
-        // 检查 K 线更新
-        if sdk.IsChanging([]string{"klines", "SHFE.au2512", "60000000000"}) {
-            klinesData, err := sdk.GetKlinesData("SHFE.au2512", 60*1e9)
-            if err != nil {
-                fmt.Printf("获取 K 线数据失败: %v\n", err)
-                return
-            }
-            if len(klinesData.Data) > 0 {
-                lastKline := klinesData.Data[len(klinesData.Data)-1]
-                fmt.Printf("K线更新 - 收盘价: %.2f\n", lastKline.Close)
-            }
-        }
-    })
-
-    // 注册错误事件
-    sdk.On(tqsdk.EventError, func(data interface{}) {
-        if err, ok := data.(error); ok {
-            fmt.Printf("错误: %v\n", err)
-        }
-    })
-
-    // 保持程序运行
-    fmt.Println("\n程序运行中，按 Ctrl+C 退出...")
-    select {}
-}
-```
-
-### 交易操作示例
-
-```go
-package main
-
-import (
-    "fmt"
-    "os"
     "time"
+
     tqsdk "github.com/pseudocodes/tqsdk-go"
 )
 
 func main() {
-    // 创建配置
-    config := tqsdk.DefaultTQSDKConfig()
-    config.LogConfig.Level = "info"
-    config.AutoInit = true
-
-    // 从环境变量获取账号信息
-    userID := os.Getenv("SHINNYTECH_ID")
-    password := os.Getenv("SHINNYTECH_PW")
-
-    // 创建 TQSDK 实例
-    sdk := tqsdk.NewTQSDK(userID, password, config)
-    defer sdk.Close()
-
-    fmt.Println("TQSDK Go 示例 - 交易操作")
-
-    // 账户信息
-    bid := "快期模拟"
-
-    // 注册数据更新事件
-    loginChecked := false
-    sdk.On(tqsdk.EventRtnData, func(data interface{}) {
-        if loginChecked {
-            return
-        }
-
-        // 检查是否登录成功
-        if sdk.IsLogined(bid, userID) {
-            loginChecked = true
-            fmt.Println("登录成功！")
-
-            // 确认结算单
-            err := sdk.ConfirmSettlement(bid, userID)
-            if err != nil {
-                fmt.Printf("确认结算单失败: %v\n", err)
-            } else {
-                fmt.Println("已确认结算单")
-            }
-
-            // 等待一下让数据同步
-            time.Sleep(2 * time.Second)
-
-            // 查询账户信息
-            fmt.Println("\n【账户信息】")
-            account := sdk.GetAccount(bid, userID)
-            if account != nil {
-                if balance, ok := account["balance"].(float64); ok {
-                    fmt.Printf("  账户权益: %.2f\n", balance)
-                }
-                if available, ok := account["available"].(float64); ok {
-                    fmt.Printf("  可用资金: %.2f\n", available)
-                }
-                if currMargin, ok := account["curr_margin"].(float64); ok {
-                    fmt.Printf("  当前保证金: %.2f\n", currMargin)
-                }
-                if riskRatio, ok := account["risk_ratio"].(float64); ok {
-                    fmt.Printf("  风险度: %.2f%%\n", riskRatio*100)
-                }
-            }
-
-            // 查询持仓
-            fmt.Println("\n【持仓信息】")
-            positions := sdk.GetPositions(bid, userID)
-            if len(positions) > 0 {
-                for symbol, posData := range positions {
-                    if posMap, ok := posData.(map[string]interface{}); ok {
-                        fmt.Printf("\n  合约: %s\n", symbol)
-                        if volumeLong, ok := posMap["volume_long_today"].(float64); ok {
-                            fmt.Printf("    今多: %.0f\n", volumeLong)
-                        }
-                        if volumeShort, ok := posMap["volume_short_today"].(float64); ok {
-                            fmt.Printf("    今空: %.0f\n", volumeShort)
-                        }
-                        if floatProfit, ok := posMap["float_profit"].(float64); ok {
-                            fmt.Printf("    浮动盈亏: %.2f\n", floatProfit)
-                        }
-                    }
-                }
-            } else {
-                fmt.Println("  无持仓")
-            }
-
-            // 查询委托单
-            fmt.Println("\n【委托单】")
-            orders := sdk.GetOrders(bid, userID)
-            activeCount := 0
-            for orderID, orderData := range orders {
-                if orderMap, ok := orderData.(map[string]interface{}); ok {
-                    if status, ok := orderMap["status"].(string); ok && status == "ALIVE" {
-                        activeCount++
-                        fmt.Printf("\n  订单ID: %s\n", orderID)
-                        if symbol, ok := orderMap["exchange_id"].(string); ok {
-                            if inst, ok := orderMap["instrument_id"].(string); ok {
-                                fmt.Printf("    合约: %s.%s\n", symbol, inst)
-                            }
-                        }
-                        if direction, ok := orderMap["direction"].(string); ok {
-                            fmt.Printf("    方向: %s\n", direction)
-                        }
-                        if limitPrice, ok := orderMap["limit_price"].(float64); ok {
-                            fmt.Printf("    价格: %.2f\n", limitPrice)
-                        }
-                        if volumeLeft, ok := orderMap["volume_left"].(float64); ok {
-                            fmt.Printf("    剩余手数: %.0f\n", volumeLeft)
-                        }
-                    }
-                }
-            }
-            if activeCount == 0 {
-                fmt.Println("  无活动委托单")
-            }
-
-            fmt.Println("\n交易示例完成")
-        }
-    })
-
-    // 注册通知事件
-    sdk.On(tqsdk.EventNotify, func(data interface{}) {
-        if notify, ok := data.(tqsdk.NotifyEvent); ok {
-            fmt.Printf("\n[通知] %s: %s\n", notify.Level, notify.Content)
-        }
-    })
-
-    // 注册错误事件
-    sdk.On(tqsdk.EventError, func(data interface{}) {
-        if err, ok := data.(error); ok {
-            fmt.Printf("\n错误: %v\n", err)
-        }
-    })
-
-    // 登录账户
-    fmt.Printf("\n正在登录账户 %s/%s ...\n", bid, userID)
-    err := sdk.Login(bid, userID, password)
+    ctx := context.Background()
+    
+    // 创建客户端
+    client, err := tqsdk.NewClient(ctx, "username", "password",
+        tqsdk.WithLogLevel("info"),
+        tqsdk.WithViewWidth(500),
+    )
     if err != nil {
-        fmt.Printf("登录失败: %v\n", err)
-        return
+        panic(err)
     }
-
-    // 保持程序运行
-    fmt.Println("\n程序运行中，按 Ctrl+C 退出...")
+    defer client.Close()
+    
+    // 订阅 Quote
+    quoteSub, _ := client.SubscribeQuote(ctx, "SHFE.au2512")
+    defer quoteSub.Close()
+    
+    quoteSub.OnQuote(func(quote *tqsdk.Quote) {
+        fmt.Printf("黄金: %.2f\n", quote.LastPrice)
+    })
+    
+    // 订阅 K线
+    klineSub, _ := client.Series().Kline(ctx, "SHFE.au2512", time.Minute, 100)
+    defer klineSub.Close()
+    
+    klineSub.OnNewBar(func(data *tqsdk.SeriesData) {
+        klines := data.GetSymbolKlines("SHFE.au2512")
+        if len(klines.Data) > 0 {
+            latest := klines.Data[len(klines.Data)-1]
+            fmt.Printf("新 K线: %.2f\n", latest.Close)
+        }
+    })
+    
+    // 保持运行
     time.Sleep(30 * time.Second)
-    fmt.Println("\n程序即将退出...")
 }
+```
+
+## 核心概念
+
+### Client - 客户端
+
+`Client` 是 TQSDK-GO 的核心入口，负责管理连接、认证、数据订阅等。
+
+#### 创建客户端
+
+```go
+client, err := tqsdk.NewClient(ctx, username, password, options...)
+```
+
+#### 配置选项
+
+```go
+// 设置日志级别
+tqsdk.WithLogLevel("debug")
+
+// 设置默认视图宽度
+tqsdk.WithViewWidth(1000)
+
+// 设置客户端信息
+tqsdk.WithClientInfo("MyApp", "v1.0.0")
+
+// 启用开发模式
+tqsdk.WithDevelopment(true)
+```
+
+### Quote 订阅
+
+Quote 订阅用于获取实时行情数据，支持多合约订阅。
+
+#### 基础用法
+
+```go
+// 订阅单个或多个合约
+quoteSub, err := client.SubscribeQuote(ctx, "SHFE.au2512", "SHFE.ag2512")
+defer quoteSub.Close()
+
+// 方式 1: 使用 Channel
+go func() {
+    for quote := range quoteSub.QuoteChannel() {
+        fmt.Printf("%s: %.2f\n", quote.InstrumentID, quote.LastPrice)
+    }
+}()
+
+// 方式 2: 使用回调
+quoteSub.OnQuote(func(quote *tqsdk.Quote) {
+    fmt.Printf("%s: %.2f\n", quote.InstrumentID, quote.LastPrice)
+})
+```
+
+#### 动态添加/移除合约
+
+```go
+// 添加合约
+quoteSub.AddSymbols("DCE.m2512", "CZCE.CF512")
+
+// 移除合约
+quoteSub.RemoveSymbols("SHFE.ag2512")
+```
+
+### Series API - 序列数据
+
+Series API 提供 K线、Tick 等序列数据的订阅功能。
+
+#### 单合约 K线订阅
+
+```go
+// 订阅 1分钟 K线，保留最新 100 根
+sub, err := client.Series().Kline(ctx, "SHFE.au2512", time.Minute, 100)
+defer sub.Close()
+
+// 监听新 K线
+sub.OnNewBar(func(data *tqsdk.SeriesData) {
+    klines := data.GetSymbolKlines("SHFE.au2512")
+    if len(klines.Data) > 0 {
+        latest := klines.Data[len(klines.Data)-1]
+        fmt.Printf("新 K线: O=%.2f H=%.2f L=%.2f C=%.2f V=%d\n",
+            latest.Open, latest.High, latest.Low, latest.Close, latest.Volume)
+    }
+})
+
+// 监听 K线更新（盘中实时）
+sub.OnBarUpdate(func(data *tqsdk.SeriesData) {
+    klines := data.GetSymbolKlines("SHFE.au2512")
+    if len(klines.Data) > 0 {
+        latest := klines.Data[len(klines.Data)-1]
+        fmt.Printf("K线更新: C=%.2f\n", latest.Close)
+    }
+})
+```
+
+#### 多合约 K线订阅（自动对齐）
+
+```go
+// 订阅多个合约的 K线，自动对齐到相同时间点
+sub, err := client.Series().KlineMulti(ctx,
+    []string{"SHFE.au2512", "SHFE.ag2512", "INE.sc2601"},
+    time.Minute, 100)
+defer sub.Close()
+
+sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
+    if info.HasNewBar {
+        // 获取最新的对齐数据集
+        if len(data.Multi.Data) > 0 {
+            latest := data.Multi.Data[len(data.Multi.Data)-1]
+            fmt.Printf("时间: %s\n", latest.Timestamp.Format("15:04:05"))
+            
+            // 遍历所有合约的 K线
+            for symbol, kline := range latest.Klines {
+                fmt.Printf("  %s: C=%.2f V=%d\n", symbol, kline.Close, kline.Volume)
+            }
+        }
+    }
+})
+```
+
+#### Tick 订阅
+
+```go
+// 订阅 Tick 数据
+sub, err := client.Series().Tick(ctx, "SHFE.au2512", 100)
+defer sub.Close()
+
+sub.OnNewBar(func(data *tqsdk.SeriesData) {
+    if data.TickData != nil && len(data.TickData.Data) > 0 {
+        tick := data.TickData.Data[len(data.TickData.Data)-1]
+        fmt.Printf("新 Tick: 价格=%.2f 买一=%.2f 卖一=%.2f\n",
+            tick.LastPrice, tick.BidPrice1, tick.AskPrice1)
+    }
+})
+```
+
+### 历史数据订阅
+
+#### 使用 left_kline_id 订阅
+
+```go
+// 从指定 K线 ID 开始订阅历史数据
+leftKlineID := int64(105761)
+sub, err := client.Series().KlineHistory(ctx, "SHFE.au2512", time.Minute, 8000, leftKlineID)
+defer sub.Close()
+
+sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
+    if info.ChartReady {
+        fmt.Printf("历史数据传输完成！数据量: %d\n", len(data.Single.Data))
+    }
+})
+```
+
+#### 使用 focus_datetime 订阅
+
+```go
+// 从指定时间点开始订阅
+focusTime := time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC)
+sub, err := client.Series().KlineHistoryWithFocus(ctx, 
+    "SHFE.au2512", time.Minute, 8000, focusTime, 1)
+defer sub.Close()
+```
+
+### 交易会话
+
+TradeSession 提供交易相关功能，支持多账户管理。
+
+#### 登录交易账户
+
+```go
+// 登录交易账户
+session, err := client.LoginTrade(ctx, "快期模拟", "userID", "password")
+if err != nil {
+    panic(err)
+}
+defer session.Close()
+```
+
+#### 下单
+
+```go
+// 构建下单请求
+req := &tqsdk.InsertOrderRequest{
+    Symbol:     "SHFE.au2512",
+    Direction:  tqsdk.DirectionBuy,
+    Offset:     tqsdk.OffsetOpen,
+    PriceType:  tqsdk.PriceTypeLimit,
+    LimitPrice: 500.00,
+    Volume:     1,
+}
+
+// 下单
+order, err := session.InsertOrder(ctx, req)
+if err != nil {
+    fmt.Printf("下单失败: %v\n", err)
+} else {
+    fmt.Printf("下单成功，订单ID: %s\n", order.OrderID)
+}
+```
+
+#### 撤单
+
+```go
+err := session.CancelOrder(ctx, orderID)
+```
+
+#### 查询账户信息
+
+```go
+// 同步查询
+account, err := session.GetAccount(ctx)
+if err == nil {
+    fmt.Printf("账户权益: %.2f\n", account.Balance)
+    fmt.Printf("可用资金: %.2f\n", account.Available)
+}
+```
+
+#### 查询持仓
+
+```go
+// 查询所有持仓
+positions, err := session.GetPositions(ctx)
+for symbol, pos := range positions {
+    fmt.Printf("%s: 多头=%d 空头=%d 浮盈=%.2f\n",
+        symbol, pos.VolumeLongToday, pos.VolumeShortToday, pos.FloatProfit)
+}
+
+// 查询指定合约持仓
+pos, err := session.GetPosition(ctx, "SHFE.au2512")
+```
+
+#### 查询委托单
+
+```go
+// 查询所有委托单
+orders, err := session.GetOrders(ctx)
+for orderID, order := range orders {
+    if order.Status == tqsdk.OrderStatusAlive {
+        fmt.Printf("活动委托: %s\n", orderID)
+    }
+}
+```
+
+#### 实时监听（Channel 模式）
+
+```go
+// 监听账户更新
+go func() {
+    for account := range session.AccountChannel() {
+        fmt.Printf("账户更新: %.2f\n", account.Balance)
+    }
+}()
+
+// 监听持仓更新
+go func() {
+    for update := range session.PositionChannel() {
+        fmt.Printf("持仓更新: %s\n", update.Symbol)
+    }
+}()
+
+// 监听订单更新
+go func() {
+    for order := range session.OrderChannel() {
+        fmt.Printf("订单更新: %s %s\n", order.OrderID, order.Status)
+    }
+}()
+
+// 监听成交更新
+go func() {
+    for trade := range session.TradeChannel() {
+        fmt.Printf("成交: %s %.2f x %d\n", trade.InstrumentID, trade.Price, trade.Volume)
+    }
+}()
+
+// 监听通知
+go func() {
+    for notify := range session.NotificationChannel() {
+        fmt.Printf("[%s] %s\n", notify.Level, notify.Content)
+    }
+}()
+```
+
+#### 实时监听（Callback 模式）
+
+```go
+// 注册账户更新回调
+session.OnAccount(func(account *tqsdk.Account) {
+    fmt.Printf("账户更新: %.2f\n", account.Balance)
+})
+
+// 注册持仓更新回调
+session.OnPosition(func(symbol string, pos *tqsdk.Position) {
+    fmt.Printf("持仓更新: %s\n", symbol)
+})
+
+// 注册订单更新回调
+session.OnOrder(func(order *tqsdk.Order) {
+    fmt.Printf("订单更新: %s\n", order.OrderID)
+})
+
+// 注册成交回调
+session.OnTrade(func(trade *tqsdk.Trade) {
+    fmt.Printf("成交: %s\n", trade.TradeID)
+})
+
+// 注册通知回调
+session.OnNotification(func(notify *tqsdk.Notification) {
+    fmt.Printf("[%s] %s\n", notify.Level, notify.Content)
+})
 ```
 
 ## 数据结构
@@ -1134,20 +435,226 @@ type Tick struct {
     Average      float64 // 均价
     Volume       int64   // 成交量
     OpenInterest int64   // 持仓量
-    // ... 盘口数据
+    AskPrice1    float64 // 卖一价
+    AskVolume1   int64   // 卖一量
+    BidPrice1    float64 // 买一价
+    BidVolume1   int64   // 买一量
+    // ... 更多盘口数据
 }
 ```
 
-## 事件常量
+### Account - 账户资金
+
+```go
+type Account struct {
+    Balance          float64 // 账户权益
+    Available        float64 // 可用资金
+    CurrMargin       float64 // 当前保证金
+    FrozenMargin     float64 // 冻结保证金
+    CloseProfit      float64 // 平仓盈亏
+    PositionProfit   float64 // 持仓盈亏
+    RiskRatio        float64 // 风险度
+    // ... 更多字段
+}
+```
+
+### Position - 持仓信息
+
+```go
+type Position struct {
+    ExchangeID          string  // 交易所代码
+    InstrumentID        string  // 合约代码
+    VolumeLongToday     int64   // 今多头持仓量
+    VolumeLongHis       int64   // 昨多头持仓量
+    VolumeShortToday    int64   // 今空头持仓量
+    VolumeShortHis      int64   // 昨空头持仓量
+    OpenPriceLong       float64 // 多头开仓均价
+    OpenPriceShort      float64 // 空头开仓均价
+    FloatProfitLong     float64 // 多头浮动盈亏
+    FloatProfitShort    float64 // 空头浮动盈亏
+    FloatProfit         float64 // 总浮动盈亏
+    Margin              float64 // 占用保证金
+    // ... 更多字段
+}
+```
+
+### Order - 委托单
+
+```go
+type Order struct {
+    OrderID         string  // 委托单ID
+    ExchangeID      string  // 交易所代码
+    InstrumentID    string  // 合约代码
+    Direction       string  // 下单方向 BUY/SELL
+    Offset          string  // 开平标志 OPEN/CLOSE/CLOSETODAY
+    VolumeOrign     int64   // 总报单手数
+    VolumeLeft      int64   // 未成交手数
+    PriceType       string  // 价格类型 LIMIT/ANY
+    LimitPrice      float64 // 委托价格
+    Status          string  // 委托单状态 ALIVE/FINISHED
+    InsertDateTime  int64   // 下单时间(纳秒)
+}
+```
+
+### Trade - 成交记录
+
+```go
+type Trade struct {
+    TradeID       string  // 成交ID
+    OrderID       string  // 委托单ID
+    ExchangeID    string  // 交易所代码
+    InstrumentID  string  // 合约代码
+    Direction     string  // 成交方向 BUY/SELL
+    Offset        string  // 开平标志 OPEN/CLOSE/CLOSETODAY
+    Price         float64 // 成交价格
+    Volume        int64   // 成交手数
+    TradeDateTime int64   // 成交时间(纳秒)
+    Commission    float64 // 手续费
+}
+```
+
+## 高级功能
+
+### ViewWidth 控制
+
+ViewWidth 用于控制返回的数据量，只保留最新的 N 条数据，优化内存使用。
+
+```go
+// 全局设置
+client, _ := tqsdk.NewClient(ctx, username, password,
+    tqsdk.WithViewWidth(1000))
+
+// 订阅时指定
+sub, _ := client.Series().Kline(ctx, "SHFE.au2512", time.Minute, 500)
+```
+
+### 多合约对齐
+
+基于 TQSDK 协议的 binding 机制，自动对齐不同合约的 K线数据到相同的时间点。
+
+```go
+sub, _ := client.Series().KlineMulti(ctx,
+    []string{"SHFE.au2512", "SHFE.ag2512"},
+    time.Minute, 100)
+
+sub.OnNewBar(func(data *tqsdk.SeriesData) {
+    // data.Multi.Data 中的每个 AlignedKlineSet 包含同一时间点的多个合约 K线
+    for _, set := range data.Multi.Data {
+        fmt.Printf("时间: %s\n", set.Timestamp.Format("15:04:05"))
+        for symbol, kline := range set.Klines {
+            fmt.Printf("  %s: %.2f\n", symbol, kline.Close)
+        }
+    }
+})
+```
+
+### DataManager 高级功能
+
+DataManager 提供底层数据管理功能，支持路径监听、数据清理等。
+
+#### 路径监听
+
+```go
+// 监听特定路径的数据变化
+ch, err := client.dm.Watch(ctx, []string{"quotes", "SHFE.au2512"})
+go func() {
+    for data := range ch {
+        fmt.Printf("数据更新: %v\n", data)
+    }
+}()
+
+// 取消监听
+client.dm.UnWatch([]string{"quotes", "SHFE.au2512"})
+```
+
+#### 动态配置
+
+```go
+// 设置视图宽度
+client.dm.SetViewWidth(2000)
+
+// 设置数据保留时间
+client.dm.SetDataRetention(24 * time.Hour)
+
+// 手动清理过期数据
+client.dm.Cleanup()
+```
+
+## 完整示例
+
+完整示例代码请参考：
+- [examples/quote/main.go](examples/quote/main.go) - 行情订阅示例
+- [examples/history/main.go](examples/history/main.go) - 历史数据订阅示例
+- [examples/datamanager/main.go](examples/datamanager/main.go) - DataManager 高级功能示例
+
+## 常量定义
+
+### 方向
 
 ```go
 const (
-    EventReady      = "ready"       // SDK就绪事件
-    EventRtnData    = "rtn_data"    // 数据更新事件
-    EventRtnBrokers = "rtn_brokers" // 期货公司列表事件
-    EventNotify     = "notify"      // 通知事件
-    EventError      = "error"       // 错误事件
+    DirectionBuy  = "BUY"
+    DirectionSell = "SELL"
 )
+```
+
+### 开平
+
+```go
+const (
+    OffsetOpen       = "OPEN"
+    OffsetClose      = "CLOSE"
+    OffsetCloseToday = "CLOSETODAY"
+)
+```
+
+### 价格类型
+
+```go
+const (
+    PriceTypeLimit = "LIMIT"  // 限价单
+    PriceTypeAny   = "ANY"    // 市价单
+)
+```
+
+### 订单状态
+
+```go
+const (
+    OrderStatusAlive    = "ALIVE"    // 活动
+    OrderStatusFinished = "FINISHED" // 已完成
+)
+```
+
+## 错误处理
+
+```go
+var (
+    ErrInvalidSymbol     = errors.New("tqsdk: invalid symbol")
+    ErrSessionClosed     = errors.New("tqsdk: session closed")
+    ErrNotLoggedIn       = errors.New("tqsdk: not logged in")
+)
+
+// 错误包装
+type Error struct {
+    Op   string // 操作名
+    Err  error  // 原始错误
+    Code string // 错误码
+}
+```
+
+## 环境变量
+
+运行示例程序需要设置以下环境变量：
+
+```bash
+# 天勤账号（必需）
+export SHINNYTECH_ID="your_username"
+export SHINNYTECH_PW="your_password"
+
+# SimNow 账号（仅交易示例需要）
+export SIMNOW_USER_0="your_simnow_user"
+export SIMNOW_PASS_0="your_simnow_pass"
 ```
 
 ## 许可证
@@ -1161,5 +668,5 @@ Apache License 2.0
 - [GitHub 仓库](https://github.com/pseudocodes/tqsdk-go)
 
 ## 免责声明
-本项目明确拒绝对产品做任何明示或暗示的担保。由于软件系统开发本身的复杂性，无法保证本项目完全没有错误。如选择使用本项目表示您同意错误和/或遗漏的存在，在任何情况下本项目对于直接、间接、特殊的、偶然的、或间接产生的、使用或无法使用本项目进行交易和投资造成的盈亏、直接或间接引起的赔偿、损失、债务或是任何交易中止均不承担责任和义务。
 
+本项目明确拒绝对产品做任何明示或暗示的担保。由于软件系统开发本身的复杂性，无法保证本项目完全没有错误。如选择使用本项目表示您同意错误和/或遗漏的存在，在任何情况下本项目对于直接、间接、特殊的、偶然的、或间接产生的、使用或无法使用本项目进行交易和投资造成的盈亏、直接或间接引起的赔偿、损失、债务或是任何交易中止均不承担责任和义务。
