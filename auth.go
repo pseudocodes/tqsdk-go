@@ -432,7 +432,8 @@ func (t *TqAuth) HasMdGrants(symbols ...string) error {
 			if t.HasFeature("futr") {
 				continue
 			}
-			return fmt.Errorf("您的账户不支持查看 %s 的行情数据, 需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol)
+			zap.L().Error(fmt.Sprintf("您的账户不支持查看 %s 的行情数据, 需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol))
+			return ErrPermissionDenied
 		}
 
 		// 检查是否为股票交易所（包括 CSI），需要 sec 权限
@@ -440,7 +441,8 @@ func (t *TqAuth) HasMdGrants(symbols ...string) error {
 			if t.HasFeature("sec") {
 				continue
 			}
-			return fmt.Errorf("您的账户不支持查看 %s 的行情数据，需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol)
+			zap.L().Error(fmt.Sprintf("您的账户不支持查看 %s 的行情数据，需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol))
+			return ErrPermissionDenied
 		}
 
 		// 检查是否为限制指数，需要 lmt_idx 权限
@@ -448,11 +450,13 @@ func (t *TqAuth) HasMdGrants(symbols ...string) error {
 			if t.HasFeature("lmt_idx") {
 				continue
 			}
-			return fmt.Errorf("您的账户不支持查看 %s 的行情数据，需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol)
+			zap.L().Error(fmt.Sprintf("您的账户不支持查看 %s 的行情数据，需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol))
+			return ErrPermissionDenied
 		}
 
 		// 不在任何已知交易所列表中
-		return fmt.Errorf("您的账户不支持查看 %s 的行情数据, 需要购买后才能使用。升级网址: https://www.shinnytech.com/tqsdk-buy/", symbol)
+		return ErrPermissionDenied
+
 	}
 	return nil
 }
@@ -477,7 +481,8 @@ func (t *TqAuth) HasTdGrants(symbol string) error {
 		if t.HasFeature("futr") {
 			return nil
 		}
-		return fmt.Errorf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol)
+		zap.L().Error(fmt.Sprintf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol))
+		return ErrPermissionDenied
 	}
 
 	// 检查是否为股票交易所（包括 CSI），需要 sec 权限
@@ -485,11 +490,13 @@ func (t *TqAuth) HasTdGrants(symbol string) error {
 		if t.HasFeature("sec") {
 			return nil
 		}
-		return fmt.Errorf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol)
+		zap.L().Error(fmt.Sprintf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol))
+		return ErrPermissionDenied
 	}
 
 	// 不在任何已知交易所列表中
-	return fmt.Errorf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol)
+	zap.L().Error(fmt.Sprintf("您的账户不支持交易 %s，需要购买后才能使用。升级网址：https://www.shinnytech.com/tqsdk-buy/", symbol))
+	return ErrPermissionDenied
 }
 
 // GetAuthID 获取认证ID

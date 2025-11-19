@@ -98,9 +98,19 @@ func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*Ser
 	if len(options.Symbols) == 0 {
 		return nil, NewError("Subscribe", ErrInvalidSymbol)
 	}
+	if sa.client.Auth.HasMdGrants(options.Symbols...) != nil {
+		return nil, NewError("Subscribe", ErrPermissionDenied)
+	}
 
 	if options.ViewWidth <= 0 {
 		options.ViewWidth = sa.client.config.DataConfig.DefaultViewWidth
+	}
+
+	if options.LeftKlineID != nil || options.FocusDatetime != nil {
+		if !sa.client.Auth.HasFeature("td_dl") {
+			sa.client.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
+			return nil, NewError("Subscribe", ErrPermissionDenied)
+		}
 	}
 
 	// 生成 Chart ID

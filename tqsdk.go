@@ -257,6 +257,10 @@ func (t *TQSDK) GetQuote(symbol string) map[string]interface{} {
 
 // SubscribeQuote 订阅行情
 func (t *TQSDK) SubscribeQuote(quotes []string) {
+	if t.Auth.HasMdGrants(quotes...) != nil {
+		t.logger.Error("HasMdGrants error", zap.Error(ErrPermissionDenied))
+		return
+	}
 	t.subscribeQuotesMu.Lock()
 	defer t.subscribeQuotesMu.Unlock()
 
