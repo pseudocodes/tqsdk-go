@@ -7,16 +7,17 @@ import (
 
 // 预定义错误
 var (
-	ErrNotConnected      = errors.New("tqsdk: not connected")
-	ErrAlreadySubscribed = errors.New("tqsdk: already subscribed")
-	ErrInvalidSymbol     = errors.New("tqsdk: invalid symbol")
-	ErrSessionClosed     = errors.New("tqsdk: session closed")
-	ErrOrderFailed       = errors.New("tqsdk: order failed")
-	ErrNotLoggedIn       = errors.New("tqsdk: not logged in")
-	ErrInvalidDuration   = errors.New("tqsdk: invalid duration")
-	ErrInvalidViewWidth  = errors.New("tqsdk: invalid view width")
+	ErrNotConnected       = errors.New("tqsdk: not connected")
+	ErrAlreadySubscribed  = errors.New("tqsdk: already subscribed")
+	ErrInvalidSymbol      = errors.New("tqsdk: invalid symbol")
+	ErrSessionClosed      = errors.New("tqsdk: session closed")
+	ErrOrderFailed        = errors.New("tqsdk: order failed")
+	ErrNotLoggedIn        = errors.New("tqsdk: not logged in")
+	ErrInvalidDuration    = errors.New("tqsdk: invalid duration")
+	ErrInvalidViewWidth   = errors.New("tqsdk: invalid view width")
 	ErrSubscriptionClosed = errors.New("tqsdk: subscription closed")
-	ErrContextCanceled   = errors.New("tqsdk: context canceled")
+	ErrContextCanceled    = errors.New("tqsdk: context canceled")
+	ErrPermissionDenied   = errors.New("tqsdk: permission denied")
 )
 
 // Error SDK错误类型
@@ -55,4 +56,3 @@ func NewErrorWithCode(op string, code string, err error) *Error {
 		Err:  err,
 	}
 }
-

@@ -98,9 +98,19 @@ func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*Ser
 	if len(options.Symbols) == 0 {
 		return nil, NewError("Subscribe", ErrInvalidSymbol)
 	}
+	if sa.client.Auth.HasMdGrants(options.Symbols...) != nil {
+		return nil, NewError("Subscribe", ErrPermissionDenied)
+	}
 
 	if options.ViewWidth <= 0 {
 		options.ViewWidth = sa.client.config.DataConfig.DefaultViewWidth
+	}
+
+	if options.LeftKlineID != nil || options.FocusDatetime != nil {
+		if !sa.client.Auth.HasFeature("tq_dl") {
+			sa.client.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
+			return nil, NewError("Subscribe", ErrPermissionDenied)
+		}
 	}
 
 	// 生成 Chart ID
@@ -451,13 +461,25 @@ func (sub *SeriesSubscription) detectChartRangeChange(data *SeriesData, info *Up
 // getSingleKlineData 获取单合约 K线数据
 func (sub *SeriesSubscription) getSingleKlineData() (*SeriesData, error) {
 	symbol := sub.options.Symbols[0]
-	klineData, err := sub.dm.GetKlinesData(symbol, sub.options.Duration.Nanoseconds(), sub.options.ViewWidth)
+
+	// 先获取 Chart 信息，提取 rightID 用于过滤数据
+	var rightID int64 = -1
+	chartData := sub.dm.GetByPath([]string{"charts", sub.options.ChartID})
+	if chartData != nil {
+		if chartMap, ok := chartData.(map[string]interface{}); ok {
+			if rid, ok := chartMap["right_id"]; ok {
+				rightID = toInt64(rid)
+			}
+		}
+	}
+
+	// 将 rightID 传入 GetKlinesData，避免在其中重复查找
+	klineData, err := sub.dm.GetKlinesData(symbol, sub.options.Duration.Nanoseconds(), sub.options.ViewWidth, rightID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取 Chart 信息
-	chartData := sub.dm.GetByPath([]string{"charts", sub.options.ChartID})
+	// 将 Chart 信息附加到结果中
 	if chartData != nil {
 		var chart ChartInfo
 		if err := sub.dm.ConvertToStruct(chartData, &chart); err == nil {
@@ -492,13 +514,25 @@ func (sub *SeriesSubscription) getMultiKlineData() (*SeriesData, error) {
 // getTickData 获取 Tick 数据
 func (sub *SeriesSubscription) getTickData() (*SeriesData, error) {
 	symbol := sub.options.Symbols[0]
-	tickData, err := sub.dm.GetTicksData(symbol, sub.options.ViewWidth)
+
+	// 先获取 Chart 信息，提取 rightID 用于过滤数据
+	var rightID int64 = -1
+	chartData := sub.dm.GetByPath([]string{"charts", sub.options.ChartID})
+	if chartData != nil {
+		if chartMap, ok := chartData.(map[string]interface{}); ok {
+			if rid, ok := chartMap["right_id"]; ok {
+				rightID = toInt64(rid)
+			}
+		}
+	}
+
+	// 将 rightID 传入 GetTicksData，避免在其中重复查找
+	tickData, err := sub.dm.GetTicksData(symbol, sub.options.ViewWidth, rightID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取 Chart 信息
-	chartData := sub.dm.GetByPath([]string{"charts", sub.options.ChartID})
+	// 将 Chart 信息附加到结果中
 	if chartData != nil {
 		var chart ChartInfo
 		if err := sub.dm.ConvertToStruct(chartData, &chart); err == nil {

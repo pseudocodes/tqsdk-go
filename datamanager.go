@@ -407,7 +407,7 @@ func (dm *DataManager) GetQuoteData(symbol string) (*Quote, error) {
 }
 
 // GetKlinesData 获取K线数据（数组形式）
-func (dm *DataManager) GetKlinesData(symbol string, duration int64, viewWidth ...int) (*KlineSeriesData, error) {
+func (dm *DataManager) GetKlinesData(symbol string, duration int64, viewWidth int, rightID int64) (*KlineSeriesData, error) {
 	data := dm.GetByPath([]string{"klines", symbol, fmt.Sprintf("%d", duration)})
 	if data == nil {
 		return nil, fmt.Errorf("klines not found: %s/%d", symbol, duration)
@@ -459,30 +459,9 @@ func (dm *DataManager) GetKlinesData(symbol string, duration int64, viewWidth ..
 				return allKlines[i].ID < allKlines[j].ID
 			})
 
-			// 【关键修复】获取 Chart 信息以过滤超出范围的数据
+			// 【关键修复】过滤超出 Chart 范围的数据（ID > right_id）
 			// TQ 服务端会在数据末尾包含一个 last_id 的 K线用于实时更新
 			// 在历史数据订阅时，需要过滤掉 ID > right_id 的数据
-			var rightID int64 = -1
-			charts := dm.GetByPath([]string{"charts"})
-			if chartsMap, ok := charts.(map[string]interface{}); ok {
-				for _, chartData := range chartsMap {
-					if chartMap, ok := chartData.(map[string]interface{}); ok {
-						if state, ok := chartMap["state"].(map[string]interface{}); ok {
-							// 检查是否匹配当前订阅
-							if insList, ok := state["ins_list"].(string); ok && strings.Contains(insList, symbol) {
-								if dur, ok := state["duration"]; ok && toInt64(dur) == duration {
-									if rid, ok := chartMap["right_id"]; ok {
-										rightID = toInt64(rid)
-									}
-									break
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// 过滤掉超出 Chart 范围的数据（ID > right_id）
 			// 使用二分查找优化：O(log n) 代替 O(n)
 			if rightID > 0 {
 				// 使用二分查找找到第一个 ID > rightID 的位置
@@ -495,8 +474,8 @@ func (dm *DataManager) GetKlinesData(symbol string, duration int64, viewWidth ..
 
 			// 应用 ViewWidth 限制（只保留最新的 viewWidth 条）
 			vw := dm.config.DefaultViewWidth
-			if len(viewWidth) > 0 && viewWidth[0] > 0 {
-				vw = viewWidth[0]
+			if viewWidth > 0 {
+				vw = viewWidth
 			}
 
 			if vw > 0 && len(allKlines) > vw {
@@ -674,7 +653,7 @@ func (dm *DataManager) GetMultiKlinesData(symbols []string, duration time.Durati
 }
 
 // GetTicksData 获取Tick数据（数组形式）
-func (dm *DataManager) GetTicksData(symbol string, viewWidth ...int) (*TickSeriesData, error) {
+func (dm *DataManager) GetTicksData(symbol string, viewWidth int, rightID int64) (*TickSeriesData, error) {
 	data := dm.GetByPath([]string{"ticks", symbol})
 	if data == nil {
 		return nil, fmt.Errorf("ticks not found: %s", symbol)
@@ -717,30 +696,9 @@ func (dm *DataManager) GetTicksData(symbol string, viewWidth ...int) (*TickSerie
 				return allTicks[i].ID < allTicks[j].ID
 			})
 
-			// 【关键修复】获取 Chart 信息以过滤超出范围的数据
+			// 【关键修复】过滤超出 Chart 范围的数据（ID > right_id）
 			// TQ 服务端会在数据末尾包含一个 last_id 的 Tick 用于实时更新
 			// 在历史数据订阅时，需要过滤掉 ID > right_id 的数据
-			var rightID int64 = -1
-			charts := dm.GetByPath([]string{"charts"})
-			if chartsMap, ok := charts.(map[string]interface{}); ok {
-				for _, chartData := range chartsMap {
-					if chartMap, ok := chartData.(map[string]interface{}); ok {
-						if state, ok := chartMap["state"].(map[string]interface{}); ok {
-							// 检查是否匹配当前订阅（Tick 的 duration 为 0）
-							if insList, ok := state["ins_list"].(string); ok && strings.Contains(insList, symbol) {
-								if dur, ok := state["duration"]; ok && toInt64(dur) == 0 {
-									if rid, ok := chartMap["right_id"]; ok {
-										rightID = toInt64(rid)
-									}
-									break
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// 过滤掉超出 Chart 范围的数据（ID > right_id）
 			// 使用二分查找优化：O(log n) 代替 O(n)
 			if rightID > 0 {
 				// 使用二分查找找到第一个 ID > rightID 的位置
@@ -753,8 +711,8 @@ func (dm *DataManager) GetTicksData(symbol string, viewWidth ...int) (*TickSerie
 
 			// 应用 ViewWidth 限制（只保留最新的 viewWidth 条）
 			vw := dm.config.DefaultViewWidth
-			if len(viewWidth) > 0 && viewWidth[0] > 0 {
-				vw = viewWidth[0]
+			if viewWidth > 0 {
+				vw = viewWidth
 			}
 
 			if vw > 0 && len(allTicks) > vw {

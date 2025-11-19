@@ -239,6 +239,9 @@ func (c *Client) SubscribeQuote(ctx context.Context, symbols ...string) (*QuoteS
 	if c.quotesWs == nil {
 		return nil, NewError("SubscribeQuote", fmt.Errorf("market not initialized, call InitMarket() first"))
 	}
+	if c.Auth.HasMdGrants(symbols...) != nil {
+		return nil, NewError("SubscribeQuote", ErrPermissionDenied)
+	}
 
 	c.quoteSubMu.Lock()
 	defer c.quoteSubMu.Unlock()
