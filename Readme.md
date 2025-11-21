@@ -30,7 +30,9 @@ import (
     "fmt"
     "time"
 
-    tqsdk "github.com/pseudocodes/tqsdk-go"
+    // 注意：导入路径为 github.com/pseudocodes/tqsdk-go/shinny
+    // 建议使用别名 tqsdk 以保持代码简洁
+    tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
 )
 
 func main() {
@@ -45,6 +47,11 @@ func main() {
         panic(err)
     }
     defer client.Close()
+
+    // 初始化行情功能 (必须调用)
+    if err := client.InitMarket(); err != nil {
+        panic(err)
+    }
     
     // 订阅 Quote
     quoteSub, _ := client.SubscribeQuote(ctx, "SHFE.au2512")
@@ -81,6 +88,16 @@ func main() {
 
 ```go
 client, err := tqsdk.NewClient(ctx, username, password, options...)
+```
+
+#### 初始化行情
+
+在使用行情相关功能（Quote, Series）之前，必须先调用 `InitMarket()`：
+
+```go
+if err := client.InitMarket(); err != nil {
+    // 处理错误
+}
 ```
 
 #### 配置选项

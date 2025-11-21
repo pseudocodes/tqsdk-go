@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 func TestNewClient(t *testing.T) {
 	// 基本的客户端创建测试（不需要真实的认证）
 	ctx := context.Background()
-	
+
 	// 测试默认配置
 	config := DefaultClientConfig("testuser", "testpass")
 	if config.Username != "testuser" {
@@ -21,19 +21,19 @@ func TestNewClient(t *testing.T) {
 	if config.DataConfig.DefaultViewWidth != 500 {
 		t.Errorf("Expected DefaultViewWidth 500, got %d", config.DataConfig.DefaultViewWidth)
 	}
-	
+
 	// 测试选项函数
 	testConfig := DefaultClientConfig("test", "test")
 	WithViewWidth(1000)(&testConfig)
 	if testConfig.DataConfig.DefaultViewWidth != 1000 {
 		t.Errorf("Expected ViewWidth 1000, got %d", testConfig.DataConfig.DefaultViewWidth)
 	}
-	
+
 	WithLogLevel("debug")(&testConfig)
 	if testConfig.LogConfig.Level != "debug" {
 		t.Errorf("Expected LogLevel 'debug', got '%s'", testConfig.LogConfig.Level)
 	}
-	
+
 	// 注意：实际的 NewClient 测试需要真实的认证信息，这里只测试配置
 	_ = ctx
 }
@@ -43,7 +43,7 @@ func TestDataManagerConfig(t *testing.T) {
 		DefaultViewWidth:  100,
 		EnableAutoCleanup: true,
 	}
-	
+
 	if config.DefaultViewWidth != 100 {
 		t.Errorf("Expected DefaultViewWidth 100, got %d", config.DefaultViewWidth)
 	}
@@ -57,9 +57,9 @@ func TestDataManagerV2(t *testing.T) {
 		"quotes": make(map[string]interface{}),
 		"klines": make(map[string]interface{}),
 	}
-	
+
 	dm := NewDataManager(initialData)
-	
+
 	// 测试基本数据存储
 	testData := map[string]interface{}{
 		"quotes": map[string]interface{}{
@@ -69,15 +69,15 @@ func TestDataManagerV2(t *testing.T) {
 			},
 		},
 	}
-	
+
 	dm.MergeData(testData, true, false)
-	
+
 	// 测试数据获取
 	quoteData := dm.GetByPath([]string{"quotes", "SHFE.au2512"})
 	if quoteData == nil {
 		t.Error("Expected quote data, got nil")
 	}
-	
+
 	if quoteMap, ok := quoteData.(map[string]interface{}); ok {
 		if lastPrice, ok := quoteMap["last_price"]; !ok || lastPrice != 500.0 {
 			t.Errorf("Expected last_price 500.0, got %v", lastPrice)
@@ -98,7 +98,7 @@ func TestToInt64(t *testing.T) {
 		{float32(25.3), 25},
 		{"invalid", 0},
 	}
-	
+
 	for _, test := range tests {
 		result := toInt64(test.input)
 		if result != test.expected {
@@ -117,14 +117,14 @@ func TestSeriesData(t *testing.T) {
 			{ID: 2, Close: 501.0},
 		},
 	}
-	
+
 	seriesData := &SeriesData{
 		IsMulti: false,
 		IsTick:  false,
 		Symbols: []string{"SHFE.au2512"},
 		Single:  single,
 	}
-	
+
 	result := seriesData.GetSymbolKlines("SHFE.au2512")
 	if result == nil {
 		t.Error("Expected kline data, got nil")
@@ -132,7 +132,7 @@ func TestSeriesData(t *testing.T) {
 	if len(result.Data) != 2 {
 		t.Errorf("Expected 2 klines, got %d", len(result.Data))
 	}
-	
+
 	// 测试多合约数据
 	multi := &MultiKlineSeriesData{
 		ChartID:    "test_chart",
@@ -152,14 +152,14 @@ func TestSeriesData(t *testing.T) {
 			"SHFE.ag2512": {Symbol: "SHFE.ag2512", LastID: 1},
 		},
 	}
-	
+
 	multiSeriesData := &SeriesData{
 		IsMulti: true,
 		IsTick:  false,
 		Symbols: []string{"SHFE.au2512", "SHFE.ag2512"},
 		Multi:   multi,
 	}
-	
+
 	auResult := multiSeriesData.GetSymbolKlines("SHFE.au2512")
 	if auResult == nil {
 		t.Error("Expected au kline data, got nil")
@@ -167,7 +167,7 @@ func TestSeriesData(t *testing.T) {
 	if len(auResult.Data) != 1 {
 		t.Errorf("Expected 1 kline for au, got %d", len(auResult.Data))
 	}
-	
+
 	agResult := multiSeriesData.GetSymbolKlines("SHFE.ag2512")
 	if agResult == nil {
 		t.Error("Expected ag kline data, got nil")
@@ -191,7 +191,7 @@ func TestUpdateInfo(t *testing.T) {
 		NewRightID:        100,
 		HasChartSync:      false,
 	}
-	
+
 	if !info.HasNewBar {
 		t.Error("Expected HasNewBar true")
 	}
@@ -212,7 +212,7 @@ func TestInsertOrderRequest(t *testing.T) {
 		LimitPrice: 500.0,
 		Volume:     1,
 	}
-	
+
 	if req.Symbol != "SHFE.au2512" {
 		t.Errorf("Expected symbol 'SHFE.au2512', got '%s'", req.Symbol)
 	}
@@ -233,7 +233,7 @@ func TestRandomStrV2(t *testing.T) {
 			t.Errorf("Expected string length %d, got %d", length, len(str))
 		}
 	}
-	
+
 	// 测试两次生成的字符串不同（概率极高）
 	str1 := RandomStr(10)
 	str2 := RandomStr(10)
@@ -247,29 +247,28 @@ func TestIsEmptyObjectV2(t *testing.T) {
 	if !IsEmptyObject(nil) {
 		t.Error("nil should be empty")
 	}
-	
+
 	// 测试空 map
 	emptyMap := make(map[string]interface{})
 	if !IsEmptyObject(emptyMap) {
 		t.Error("Empty map should be empty")
 	}
-	
+
 	// 测试非空 map
 	nonEmptyMap := map[string]interface{}{"key": "value"}
 	if IsEmptyObject(nonEmptyMap) {
 		t.Error("Non-empty map should not be empty")
 	}
-	
+
 	// 测试空 slice
 	emptySlice := []string{}
 	if !IsEmptyObject(emptySlice) {
 		t.Error("Empty slice should be empty")
 	}
-	
+
 	// 测试非空 slice
 	nonEmptySlice := []string{"item"}
 	if IsEmptyObject(nonEmptySlice) {
 		t.Error("Non-empty slice should not be empty")
 	}
 }
-

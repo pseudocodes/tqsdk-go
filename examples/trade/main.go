@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
 )
 
 // TradeCallbackExample 使用回调模式的交易示例

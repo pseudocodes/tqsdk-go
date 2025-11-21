@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
 )
 
 // QuoteSubscriptionExample Quote 订阅示例

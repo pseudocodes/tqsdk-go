@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"math"
