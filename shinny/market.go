@@ -111,6 +111,13 @@ func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*Ser
 			sa.client.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
 			return nil, NewError("Subscribe", ErrPermissionDenied)
 		}
+		if options.LeftKlineID != nil && *options.LeftKlineID <= 0 {
+			return nil, NewError("Subscribe", ErrInvalidLeftKlineId)
+		} else if options.FocusDatetime != nil && options.FocusPosition == nil {
+			return nil, NewError("Subscribe", ErrInvalidFocusPosition)
+		} else if options.FocusDatetime != nil && *options.FocusPosition < 0 {
+			return nil, NewError("Subscribe", ErrInvalidFocusPosition)
+		}
 	}
 
 	// 生成 Chart ID
@@ -367,7 +374,8 @@ func (sub *SeriesSubscription) processUpdate() {
 	}
 
 	// 调用 OnBarUpdate 回调（传递完整序列数据）
-	if onBarUpdate != nil && updateInfo.HasBarUpdate && !updateInfo.HasNewBar {
+	// if onBarUpdate != nil && updateInfo.HasBarUpdate && !updateInfo.HasNewBar {
+	if onBarUpdate != nil && updateInfo.HasBarUpdate {
 		go onBarUpdate(seriesData)
 	}
 }
@@ -390,6 +398,7 @@ func (sub *SeriesSubscription) detectNewBars(data *SeriesData, info *UpdateInfo)
 		lastID := sub.lastIDs[symbol]
 		if currentID > lastID && lastID != -1 {
 			info.HasNewBar = true
+			info.HasBarUpdate = true
 			info.NewBarIDs[symbol] = currentID
 		}
 
