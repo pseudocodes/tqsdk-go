@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"context"
@@ -30,7 +30,8 @@ func NewSeriesAPI(client *Client, dm *DataManager, ws *TqQuoteWebsocket) *Series
 	}
 }
 
-// Kline 订阅单个合约的 K线
+// Kline 订阅单个合约的 K线（延迟启动，推荐）
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) Kline(ctx context.Context, symbol string, duration time.Duration, viewWidth int) (*SeriesSubscription, error) {
 	return sa.Subscribe(ctx, SeriesOptions{
 		Symbols:   []string{symbol},
@@ -39,7 +40,17 @@ func (sa *SeriesAPI) Kline(ctx context.Context, symbol string, duration time.Dur
 	})
 }
 
-// KlineMulti 订阅多个合约的 K线（同一个 Chart）
+// KlineAndStart 订阅单个合约的 K线并立即启动
+func (sa *SeriesAPI) KlineAndStart(ctx context.Context, symbol string, duration time.Duration, viewWidth int) (*SeriesSubscription, error) {
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:   []string{symbol},
+		Duration:  duration,
+		ViewWidth: viewWidth,
+	})
+}
+
+// KlineMulti 订阅多个合约的 K线（同一个 Chart，延迟启动）
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) KlineMulti(ctx context.Context, symbols []string, duration time.Duration, viewWidth int) (*SeriesSubscription, error) {
 	if len(symbols) == 0 {
 		return nil, NewError("KlineMulti", ErrInvalidSymbol)
@@ -52,7 +63,21 @@ func (sa *SeriesAPI) KlineMulti(ctx context.Context, symbols []string, duration 
 	})
 }
 
-// Tick 订阅单个合约的 Tick
+// KlineMultiAndStart 订阅多个合约的 K线并立即启动
+func (sa *SeriesAPI) KlineMultiAndStart(ctx context.Context, symbols []string, duration time.Duration, viewWidth int) (*SeriesSubscription, error) {
+	if len(symbols) == 0 {
+		return nil, NewError("KlineMultiAndStart", ErrInvalidSymbol)
+	}
+
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:   symbols,
+		Duration:  duration,
+		ViewWidth: viewWidth,
+	})
+}
+
+// Tick 订阅单个合约的 Tick（延迟启动，推荐）
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) Tick(ctx context.Context, symbol string, viewWidth int) (*SeriesSubscription, error) {
 	return sa.Subscribe(ctx, SeriesOptions{
 		Symbols:   []string{symbol},
@@ -61,7 +86,17 @@ func (sa *SeriesAPI) Tick(ctx context.Context, symbol string, viewWidth int) (*S
 	})
 }
 
-// KlineHistory 订阅单个合约的历史 K线（使用 left_kline_id）
+// TickAndStart 订阅单个合约的 Tick 并立即启动
+func (sa *SeriesAPI) TickAndStart(ctx context.Context, symbol string, viewWidth int) (*SeriesSubscription, error) {
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:   []string{symbol},
+		Duration:  0, // 0 表示 Tick
+		ViewWidth: viewWidth,
+	})
+}
+
+// KlineHistory 订阅单个合约的历史 K线（使用 left_kline_id，延迟启动）
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) KlineHistory(ctx context.Context, symbol string, duration time.Duration, viewWidth int, leftKlineID int64) (*SeriesSubscription, error) {
 	return sa.Subscribe(ctx, SeriesOptions{
 		Symbols:     []string{symbol},
@@ -71,8 +106,19 @@ func (sa *SeriesAPI) KlineHistory(ctx context.Context, symbol string, duration t
 	})
 }
 
-// KlineHistoryWithFocus 订阅单个合约的历史 K线（使用 focus_datetime + focus_position）
-// focusPosition: 1=从焦点时间向右扩展，-1=从焦点时间向左扩展
+// KlineHistoryAndStart 订阅单个合约的历史 K线并立即启动（使用 left_kline_id）
+func (sa *SeriesAPI) KlineHistoryAndStart(ctx context.Context, symbol string, duration time.Duration, viewWidth int, leftKlineID int64) (*SeriesSubscription, error) {
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:     []string{symbol},
+		Duration:    duration,
+		ViewWidth:   viewWidth,
+		LeftKlineID: &leftKlineID,
+	})
+}
+
+// KlineHistoryWithFocus 订阅单个合约的历史 K线（使用 focus_datetime + focus_position，延迟启动）
+// focusPosition >0 起始时间从焦点时间向左扩展
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) KlineHistoryWithFocus(ctx context.Context, symbol string, duration time.Duration, viewWidth int, focusTime time.Time, focusPosition int) (*SeriesSubscription, error) {
 	return sa.Subscribe(ctx, SeriesOptions{
 		Symbols:       []string{symbol},
@@ -83,7 +129,19 @@ func (sa *SeriesAPI) KlineHistoryWithFocus(ctx context.Context, symbol string, d
 	})
 }
 
-// TickHistory 订阅单个合约的历史 Tick（使用 left_kline_id）
+// KlineHistoryWithFocusAndStart 订阅单个合约的历史 K线并立即启动（使用 focus_datetime + focus_position）
+func (sa *SeriesAPI) KlineHistoryWithFocusAndStart(ctx context.Context, symbol string, duration time.Duration, viewWidth int, focusTime time.Time, focusPosition int) (*SeriesSubscription, error) {
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:       []string{symbol},
+		Duration:      duration,
+		ViewWidth:     viewWidth,
+		FocusDatetime: &focusTime,
+		FocusPosition: &focusPosition,
+	})
+}
+
+// TickHistory 订阅单个合约的历史 Tick（使用 left_kline_id，延迟启动）
+// 需要先注册回调，然后调用 sub.Start() 启动监听
 func (sa *SeriesAPI) TickHistory(ctx context.Context, symbol string, viewWidth int, leftKlineID int64) (*SeriesSubscription, error) {
 	return sa.Subscribe(ctx, SeriesOptions{
 		Symbols:     []string{symbol},
@@ -93,7 +151,18 @@ func (sa *SeriesAPI) TickHistory(ctx context.Context, symbol string, viewWidth i
 	})
 }
 
-// Subscribe 通用订阅方法
+// TickHistoryAndStart 订阅单个合约的历史 Tick 并立即启动（使用 left_kline_id）
+func (sa *SeriesAPI) TickHistoryAndStart(ctx context.Context, symbol string, viewWidth int, leftKlineID int64) (*SeriesSubscription, error) {
+	return sa.SubscribeAndStart(ctx, SeriesOptions{
+		Symbols:     []string{symbol},
+		Duration:    0,
+		ViewWidth:   viewWidth,
+		LeftKlineID: &leftKlineID,
+	})
+}
+
+// Subscribe 通用订阅方法（延迟启动，推荐）
+// 创建订阅但不立即启动监听，允许用户先注册回调函数，然后调用 sub.Start() 启动监听，避免错过数据
 func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*SeriesSubscription, error) {
 	if len(options.Symbols) == 0 {
 		return nil, NewError("Subscribe", ErrInvalidSymbol)
@@ -111,6 +180,13 @@ func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*Ser
 			sa.client.logger.Error("数据获取方式仅限专业版用户使用，如需购买专业版或者申请试用，请访问 https://www.shinnytech.com/tqsdk-buy/")
 			return nil, NewError("Subscribe", ErrPermissionDenied)
 		}
+		if options.LeftKlineID != nil && *options.LeftKlineID <= 0 {
+			return nil, NewError("Subscribe", ErrInvalidLeftKlineId)
+		} else if options.FocusDatetime != nil && options.FocusPosition == nil {
+			return nil, NewError("Subscribe", ErrInvalidFocusPosition)
+		} else if options.FocusDatetime != nil && *options.FocusPosition < 0 {
+			return nil, NewError("Subscribe", ErrInvalidFocusPosition)
+		}
 	}
 
 	// 生成 Chart ID
@@ -126,13 +202,29 @@ func (sa *SeriesAPI) Subscribe(ctx context.Context, options SeriesOptions) (*Ser
 		return sub, nil
 	}
 
-	// 创建新订阅
+	// 创建新订阅（延迟启动）
 	sub, err := NewSeriesSubscription(ctx, sa.client, sa.dm, sa.ws, options)
 	if err != nil {
 		return nil, err
 	}
 
 	sa.subscriptions[options.ChartID] = sub
+	return sub, nil
+}
+
+// SubscribeAndStart 创建订阅并立即启动监听
+// 注意：立即启动可能存在竞态条件，推荐使用 Subscribe 方法并手动调用 Start()
+func (sa *SeriesAPI) SubscribeAndStart(ctx context.Context, options SeriesOptions) (*SeriesSubscription, error) {
+	sub, err := sa.Subscribe(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// 立即启动监听
+	if err := sub.Start(); err != nil {
+		return nil, err
+	}
+
 	return sub, nil
 }
 
@@ -187,7 +279,7 @@ func NewSeriesSubscription(ctx context.Context, client *Client, dm *DataManager,
 		lastIDs:     make(map[string]int64),
 		lastLeftID:  -1,
 		lastRightID: -1,
-		running:     true,
+		running:     false, // 初始状态为未启动
 	}
 
 	// 初始化 lastIDs
@@ -201,11 +293,25 @@ func NewSeriesSubscription(ctx context.Context, client *Client, dm *DataManager,
 		return nil, err
 	}
 
-	// 启动监听
+	// 不在这里启动监听，等待用户注册回调后调用 Start()
+
+	return sub, nil
+}
+
+// Start 启动订阅监听（在注册回调后调用）
+func (sub *SeriesSubscription) Start() error {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+
+	if sub.running {
+		return nil // 已经启动
+	}
+
+	sub.running = true
 	sub.wg.Add(1)
 	go sub.watch()
 
-	return sub, nil
+	return nil
 }
 
 // sendSetChart 发送 set_chart 请求
@@ -367,7 +473,8 @@ func (sub *SeriesSubscription) processUpdate() {
 	}
 
 	// 调用 OnBarUpdate 回调（传递完整序列数据）
-	if onBarUpdate != nil && updateInfo.HasBarUpdate && !updateInfo.HasNewBar {
+	// if onBarUpdate != nil && updateInfo.HasBarUpdate && !updateInfo.HasNewBar {
+	if onBarUpdate != nil && updateInfo.HasBarUpdate {
 		go onBarUpdate(seriesData)
 	}
 }
@@ -388,8 +495,10 @@ func (sub *SeriesSubscription) detectNewBars(data *SeriesData, info *UpdateInfo)
 		}
 
 		lastID := sub.lastIDs[symbol]
-		if currentID > lastID && lastID != -1 {
+		// if currentID > lastID && lastID != -1 {
+		if currentID > lastID {
 			info.HasNewBar = true
+			info.HasBarUpdate = true
 			info.NewBarIDs[symbol] = currentID
 		}
 

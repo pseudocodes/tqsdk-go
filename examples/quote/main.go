@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
 )
 
 // QuoteSubscriptionExample Quote 订阅示例
@@ -41,7 +41,7 @@ func QuoteSubscriptionExample() {
 
 	// 示例 1: 使用流式接口
 	fmt.Println("开始订阅合约...")
-	quoteSub, err := client.SubscribeQuote(ctx, "SHFE.au2512", "SHFE.ag2512", "DCE.m2512")
+	quoteSub, err := client.SubscribeQuote(ctx, "SHFE.au2602", "SHFE.ag2512", "DCE.m2512")
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
 		return
@@ -57,7 +57,7 @@ func QuoteSubscriptionExample() {
 			fmt.Printf("收到 Quote 更新 #%d: %s\n", count, quote.InstrumentID)
 
 			// 用户自行过滤合约（注意：需要使用完整的合约代码）
-			if quote.InstrumentID == "SHFE.au2512" {
+			if quote.InstrumentID == "SHFE.au2602" {
 				fmt.Printf("📊 黄金: 最新价=%.2f, 涨跌=%.2f, 买一=%.2f, 卖一=%.2f\n",
 					quote.LastPrice, quote.Change, quote.BidPrice1, quote.AskPrice1)
 			}
@@ -78,7 +78,7 @@ func QuoteSubscriptionExample() {
 	fmt.Println("Quote 订阅示例结束")
 }
 
-// SingleKlineSubscriptionExample 单合约 K线订阅示例
+// SingleKlineSubscriptionExample 单合约 K线订阅示例（推荐用法）
 func SingleKlineSubscriptionExample() {
 	ctx := context.Background()
 
@@ -102,8 +102,8 @@ func SingleKlineSubscriptionExample() {
 
 	fmt.Println("==================== 单合约 K线订阅示例 ====================")
 
-	// 订阅 1分钟 K线
-	sub, err := client.Series().Kline(ctx, "SHFE.au2512", 60*time.Second, 5)
+	// 创建订阅（延迟启动，推荐方式）
+	sub, err := client.Series().Kline(ctx, "SHFE.au2602", 60*time.Second, 5)
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
 		return
@@ -111,49 +111,51 @@ func SingleKlineSubscriptionExample() {
 	defer sub.Close()
 
 	// 方式 1: 使用通用更新回调（包含更新信息）
-	// sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
-	// 	symData := data.GetSymbolKlines("SHFE.cu2501")
+	sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
+		symData := data.GetSymbolKlines("SHFE.au2602")
+		if symData == nil {
+			return
+		}
+		if info.HasNewBar {
+			// 新增了一根 K线
+			fmt.Printf("🆕 新 K线! ID=%d, 数据量=%d\n",
+				info.NewBarIDs["SHFE.au2601"],
+				len(symData.Data))
 
-	// 	if info.HasNewBar {
-	// 		// 新增了一根 K线
-	// 		fmt.Printf("🆕 新 K线! ID=%d, 数据量=%d\n",
-	// 			info.NewBarIDs["SHFE.cu2501"],
-	// 			len(symData.Data))
+			if len(symData.Data) > 0 {
+				latest := symData.Data[len(symData.Data)-1]
+				fmt.Printf("   时间=%s O:%.2f H:%.2f L:%.2f C:%.2f V:%d\n",
+					time.Unix(0, latest.Datetime).Format("15:04:05"),
+					latest.Open, latest.High, latest.Low, latest.Close, latest.Volume)
+			}
+		}
 
-	// 		if len(symData.Data) > 0 {
-	// 			latest := symData.Data[len(symData.Data)-1]
-	// 			fmt.Printf("   时间=%s O:%.2f H:%.2f L:%.2f C:%.2f V:%d\n",
-	// 				time.Unix(0, latest.Datetime).Format("15:04:05"),
-	// 				latest.Open, latest.High, latest.Low, latest.Close, latest.Volume)
-	// 		}
-	// 	}
+		if info.HasBarUpdate && !info.HasNewBar {
+			// 更新了最后一根 K线（盘中实时更新）
+			fmt.Printf("🔄 K线更新 (LastID=%d)\n", symData.LastID)
 
-	// 	if info.HasBarUpdate && !info.HasNewBar {
-	// 		// 更新了最后一根 K线（盘中实时更新）
-	// 		fmt.Printf("🔄 K线更新 (LastID=%d)\n", symData.LastID)
+			if len(symData.Data) > 0 {
+				latest := symData.Data[len(symData.Data)-1]
+				fmt.Printf("   当前价:%.2f (L:%.2f H:%.2f V:%d)\n",
+					latest.Close, latest.Low, latest.High, latest.Volume)
+			}
+		}
 
-	// 		if len(symData.Data) > 0 {
-	// 			latest := symData.Data[len(symData.Data)-1]
-	// 			fmt.Printf("   当前价:%.2f (L:%.2f H:%.2f V:%d)\n",
-	// 				latest.Close, latest.Low, latest.High, latest.Volume)
-	// 		}
-	// 	}
+		if info.ChartRangeChanged {
+			fmt.Printf("📊 Chart 范围变化: [%d,%d] -> [%d,%d]\n",
+				info.OldLeftID, info.OldRightID,
+				info.NewLeftID, info.NewRightID)
+		}
 
-	// 	if info.ChartRangeChanged {
-	// 		fmt.Printf("📊 Chart 范围变化: [%d,%d] -> [%d,%d]\n",
-	// 			info.OldLeftID, info.OldRightID,
-	// 			info.NewLeftID, info.NewRightID)
-	// 	}
-
-	// 	if info.HasChartSync {
-	// 		fmt.Printf("✅ Chart 同步完成! 范围: [%d,%d]\n",
-	// 			data.Single.Chart.LeftID, data.Single.Chart.RightID)
-	// 	}
-	// })
+		if info.HasChartSync {
+			fmt.Printf("✅ Chart 同步完成! 范围: [%d,%d]\n",
+				data.Single.Chart.LeftID, data.Single.Chart.RightID)
+		}
+	})
 
 	// 方式 2: 使用专门的新 K线回调（传递完整序列数据，便于计算指标）
 	sub.OnNewBar(func(data *tqsdk.SeriesData) {
-		symData := data.GetSymbolKlines("SHFE.au2512")
+		symData := data.GetSymbolKlines("SHFE.au2602")
 		if len(symData.Data) > 0 {
 			latest := symData.Data[len(symData.Data)-1]
 			fmt.Printf("🎯 新 K线: [%d] C=%.2f V=%d (序列长度=%d)\n",
@@ -172,15 +174,21 @@ func SingleKlineSubscriptionExample() {
 		}
 	})
 
-	// 方式 3: 使用 K线更新回调（盘中实时）
 	sub.OnBarUpdate(func(data *tqsdk.SeriesData) {
-		symData := data.GetSymbolKlines("SHFE.cu2501")
+		symData := data.GetSymbolKlines("SHFE.au2602")
 		if len(symData.Data) > 0 {
 			latest := symData.Data[len(symData.Data)-1]
 			fmt.Printf("⏰ K线更新: [%d] C=%.2f (实时)\n",
 				latest.ID, latest.Close)
 		}
 	})
+
+	// 所有回调注册完成后，启动监听（不会错过数据）
+	if err := sub.Start(); err != nil {
+		fmt.Printf("启动监听失败: %v\n", err)
+		return
+	}
+	fmt.Println("✅ 订阅已启动")
 
 	// 运行 50 秒
 	time.Sleep(50 * time.Second)
@@ -213,7 +221,7 @@ func MultiKlineSubscriptionExample() {
 
 	// 订阅多个合约的 1分钟 K线
 	sub, err := client.Series().KlineMulti(ctx,
-		[]string{"SHFE.au2512", "SHFE.ag2512", "INE.sc2601"},
+		[]string{"SHFE.au2602", "SHFE.ag2512", "INE.sc2601"},
 		time.Minute, 10)
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
@@ -258,7 +266,7 @@ func MultiKlineSubscriptionExample() {
 	fmt.Println("多合约 K线订阅示例结束")
 }
 
-// TickSubscriptionExample Tick 订阅示例
+// TickSubscriptionExample Tick 订阅示例（推荐用法）
 func TickSubscriptionExample() {
 	ctx := context.Background()
 
@@ -283,14 +291,15 @@ func TickSubscriptionExample() {
 
 	fmt.Println("==================== Tick 订阅示例 ====================")
 
-	// 订阅 Tick
-	sub, err := client.Series().Tick(ctx, "SHFE.au2512", 5)
+	// 创建订阅（延迟启动，推荐方式）
+	sub, err := client.Series().Tick(ctx, "SHFE.au2602", 5)
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
 		return
 	}
 	defer sub.Close()
 
+	// 先注册所有回调函数
 	sub.OnNewBar(func(data *tqsdk.SeriesData) {
 		if data.TickData != nil && len(data.TickData.Data) > 0 {
 			tick := data.TickData.Data[len(data.TickData.Data)-1]
@@ -304,6 +313,70 @@ func TickSubscriptionExample() {
 		}
 	})
 
+	sub.OnBarUpdate(func(data *tqsdk.SeriesData) {
+		if data.TickData != nil && len(data.TickData.Data) > 0 {
+			tick := data.TickData.Data[len(data.TickData.Data)-1]
+			fmt.Printf("🔄 Tick 更新: [%d] 最新价=%.2f\n", tick.ID, tick.LastPrice)
+		}
+	})
+
+	// 所有回调注册完成后，启动监听（不会错过数据）
+	if err := sub.Start(); err != nil {
+		fmt.Printf("启动监听失败: %v\n", err)
+		return
+	}
+	fmt.Println("✅ 订阅已启动")
+
+	// 运行 20 秒
+	time.Sleep(20 * time.Second)
+	fmt.Println("Tick 订阅示例结束")
+}
+
+// TickSubscriptionAndStartExample Tick 订阅示例（AndStart 方式，自动启动）
+// 注意：这种方式可能有竞态条件，推荐使用 TickSubscriptionExample
+func TickSubscriptionAndStartExample() {
+	ctx := context.Background()
+
+	username := os.Getenv("SHINNYTECH_ID")
+	password := os.Getenv("SHINNYTECH_PW")
+
+	client, err := tqsdk.NewClient(ctx, username, password,
+		tqsdk.WithLogLevel("info"),
+		tqsdk.WithDevelopment(true),
+	)
+	if err != nil {
+		fmt.Printf("创建客户端失败: %v\n", err)
+		return
+	}
+	defer client.Close()
+
+	// 初始化行情功能
+	if err := client.InitMarket(); err != nil {
+		fmt.Printf("初始化行情功能失败: %v\n", err)
+		return
+	}
+
+	fmt.Println("==================== Tick 订阅示例（AndStart 方式）====================")
+
+	// 使用 TickAndStart 创建并自动启动订阅
+	// 注意：回调注册与数据到达之间可能存在竞态条件
+	sub, err := client.Series().TickAndStart(ctx, "SHFE.au2602", 5)
+	if err != nil {
+		fmt.Printf("订阅失败: %v\n", err)
+		return
+	}
+	defer sub.Close()
+
+	// 在订阅已启动后注册回调（可能会错过早期数据）
+	sub.OnNewBar(func(data *tqsdk.SeriesData) {
+		if data.TickData != nil && len(data.TickData.Data) > 0 {
+			tick := data.TickData.Data[len(data.TickData.Data)-1]
+			fmt.Printf("📈 新 Tick: [%d] 最新价=%.2f\n", tick.ID, tick.LastPrice)
+		}
+	})
+
+	fmt.Println("⚠️  订阅已自动启动，但可能错过了早期数据")
+
 	// 运行 20 秒
 	time.Sleep(20 * time.Second)
 	fmt.Println("Tick 订阅示例结束")
@@ -315,6 +388,7 @@ func main() {
 	SingleKlineSubscriptionExample()
 	// MultiKlineSubscriptionExample()
 	// TickSubscriptionExample()
+	// TickSubscriptionAndStartExample()
 
 	fmt.Println("所有示例运行完成!")
 }

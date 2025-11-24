@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ import (
 func RandomStr(length int) string {
 	const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	
+
 	result := make([]byte, length)
 	for i := range result {
 		result[i] = charset[r.Intn(len(charset))]
@@ -29,7 +29,7 @@ func IsEmptyObject(obj interface{}) bool {
 	if obj == nil {
 		return true
 	}
-	
+
 	v := reflect.ValueOf(obj)
 	switch v.Kind() {
 	case reflect.Map, reflect.Slice:
@@ -57,16 +57,16 @@ func ParseSettlementContent(txt string) *HisSettlement {
 	if txt == "" {
 		return &HisSettlement{}
 	}
-	
+
 	lines := strings.Split(txt, "\n")
 	currentSection := ""
-	
+
 	result := &HisSettlement{
 		Account:            make(map[string]string),
 		PositionClosed:     make([]map[string]string, 0),
 		TransactionRecords: make([]map[string]string, 0),
 	}
-	
+
 	// 表格状态
 	tableStates := map[string]struct {
 		title    string
@@ -81,17 +81,17 @@ func ParseSettlementContent(txt string) *HisSettlement {
 			colNames: []string{},
 		},
 	}
-	
+
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
-		
+
 		// 检查资金状况
 		if strings.Contains(line, "资金状况") {
 			currentSection = "account"
 			i++
 			continue
 		}
-		
+
 		// 检查平仓明细或成交记录
 		if strings.Contains(line, "平仓明细") || strings.Contains(line, "成交记录") {
 			if strings.Contains(line, "平仓明细") {
@@ -99,7 +99,7 @@ func ParseSettlementContent(txt string) *HisSettlement {
 			} else {
 				currentSection = "transactionRecords"
 			}
-			
+
 			// 读取表头
 			for i++; i < len(lines); i++ {
 				s := strings.TrimSpace(lines[i])
@@ -117,21 +117,21 @@ func ParseSettlementContent(txt string) *HisSettlement {
 			}
 			continue
 		}
-		
+
 		// 处理账户信息
 		if currentSection == "account" {
 			if line == "" || strings.Replace(line, "-", "", -1) == "" {
 				currentSection = ""
 				continue
 			}
-			
+
 			// 匹配英文标签和数字
 			enRegex := regexp.MustCompile(`([A-Z][a-zA-Z\.\s/\(\)]+)[:：]+`)
 			numRegex := regexp.MustCompile(`(-?[\d]+\.\d\d)`)
-			
+
 			enMatches := enRegex.FindAllStringSubmatch(line, -1)
 			numMatches := numRegex.FindAllStringSubmatch(line, -1)
-			
+
 			for j := 0; j < len(enMatches) && j < len(numMatches); j++ {
 				key := strings.Split(enMatches[j][1], ":")[0]
 				key = strings.TrimSpace(key)
@@ -143,11 +143,11 @@ func ParseSettlementContent(txt string) *HisSettlement {
 				currentSection = ""
 				continue
 			}
-			
+
 			colNames := tableStates[currentSection].colNames
 			contents := genList(line)
 			data := genItem(colNames, contents)
-			
+
 			// 特殊处理成交记录中的手数和手续费
 			if currentSection == "transactionRecords" && len(colNames) != len(contents) {
 				indexLots := -1
@@ -160,7 +160,7 @@ func ParseSettlementContent(txt string) *HisSettlement {
 						indexFee = idx
 					}
 				}
-				
+
 				if indexLots >= 0 && indexFee >= 0 {
 					digitRegex := regexp.MustCompile(`^\d+$`)
 					for i := 1; i < len(contents); i++ {
@@ -174,7 +174,7 @@ func ParseSettlementContent(txt string) *HisSettlement {
 					}
 				}
 			}
-			
+
 			if currentSection == "positionClosed" {
 				result.PositionClosed = append(result.PositionClosed, data)
 			} else {
@@ -182,7 +182,7 @@ func ParseSettlementContent(txt string) *HisSettlement {
 			}
 		}
 	}
-	
+
 	return result
 }
 
@@ -190,7 +190,7 @@ func ParseSettlementContent(txt string) *HisSettlement {
 func genList(str string) []string {
 	list := []string{}
 	items := strings.Split(str, "|")
-	
+
 	for i, item := range items {
 		name := strings.TrimSpace(item)
 		// 去掉第一个和最后一个空白
@@ -202,7 +202,7 @@ func genList(str string) []string {
 		}
 		list = append(list, name)
 	}
-	
+
 	return list
 }
 
@@ -239,4 +239,3 @@ func FetchJSON(url string) (interface{}, error) {
 
 	return result, nil
 }
-

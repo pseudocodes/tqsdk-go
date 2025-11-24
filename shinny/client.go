@@ -1,9 +1,13 @@
-package tqsdk
+package shinny
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -39,6 +43,18 @@ type Client struct {
 	mu sync.RWMutex
 }
 
+// SymbolsCacheStrategy 合约信息缓存策略
+type SymbolsCacheStrategy int
+
+const (
+	// CacheStrategyAlwaysNetwork 总是从网络获取
+	CacheStrategyAlwaysNetwork SymbolsCacheStrategy = iota
+	// CacheStrategyPreferLocal 优先使用本地缓存
+	CacheStrategyPreferLocal
+	// CacheStrategyAutoRefresh 如果本地缓存超过指定时间则自动刷新
+	CacheStrategyAutoRefresh
+)
+
 // ClientConfig 客户端配置
 type ClientConfig struct {
 	// 认证信息
@@ -53,6 +69,11 @@ type ClientConfig struct {
 	ClientSystemInfo string // 客户端系统信息
 	ClientAppID      string // 客户端应用ID
 
+	// 合约缓存配置
+	SymbolsCacheDir      string               // 缓存目录，默认 $HOME/.tqsdk
+	SymbolsCacheStrategy SymbolsCacheStrategy // 缓存策略
+	SymbolsCacheMaxAge   int64                // 缓存最大有效期（秒），默认 86400（1天）
+
 	// 日志配置
 	LogConfig LogConfig
 
@@ -65,10 +86,16 @@ type ClientConfig struct {
 
 // DefaultClientConfig 默认配置
 func DefaultClientConfig(username, password string) ClientConfig {
+	homeDir, _ := os.UserHomeDir()
+	cacheDir := filepath.Join(homeDir, ".tqsdk")
+
 	return ClientConfig{
-		Username:         username,
-		Password:         password,
-		SymbolsServerURL: "https://openmd.shinnytech.com/t/md/symbols/latest.json",
+		Username:             username,
+		Password:             password,
+		SymbolsServerURL:     "https://openmd.shinnytech.com/t/md/symbols/latest.json",
+		SymbolsCacheDir:      cacheDir,
+		SymbolsCacheStrategy: CacheStrategyAutoRefresh,
+		SymbolsCacheMaxAge:   86400, // 1天
 		LogConfig: LogConfig{
 			Level:       "info",
 			OutputPath:  "stdout",
@@ -165,6 +192,27 @@ func WithDevelopment(development bool) ClientOption {
 	}
 }
 
+// WithSymbolsCacheDir 设置合约信息缓存目录
+func WithSymbolsCacheDir(dir string) ClientOption {
+	return func(c *ClientConfig) {
+		c.SymbolsCacheDir = dir
+	}
+}
+
+// WithSymbolsCacheStrategy 设置合约信息缓存策略
+func WithSymbolsCacheStrategy(strategy SymbolsCacheStrategy) ClientOption {
+	return func(c *ClientConfig) {
+		c.SymbolsCacheStrategy = strategy
+	}
+}
+
+// WithSymbolsCacheMaxAge 设置合约信息缓存最大有效期（秒）
+func WithSymbolsCacheMaxAge(maxAge int64) ClientOption {
+	return func(c *ClientConfig) {
+		c.SymbolsCacheMaxAge = maxAge
+	}
+}
+
 // InitMarket 初始化行情功能（WebSocket 和 SeriesAPI）
 // 此方法是可选的，只有需要使用行情功能时才调用
 func (c *Client) InitMarket() error {
@@ -177,29 +225,8 @@ func (c *Client) InitMarket() error {
 		return nil
 	}
 
-	// 下载合约信息
-	go func() {
-		data, err := FetchJSON(c.config.SymbolsServerURL)
-		if err != nil {
-			c.logger.Error("Failed to fetch symbols", zap.Error(err))
-			return
-		}
-
-		if quotesMap, ok := data.(map[string]interface{}); ok {
-			c.mu.Lock()
-			for symbol, quoteData := range quotesMap {
-				if quoteMap, ok := quoteData.(map[string]interface{}); ok {
-					if class, ok := quoteMap["class"].(string); ok && class == "FUTURE_OPTION" {
-						quoteMap["class"] = "OPTION"
-					}
-					c.quotesInfo[symbol] = quoteMap
-				}
-			}
-			c.mu.Unlock()
-		}
-
-		c.logger.Info("Symbols loaded", zap.Int("count", len(c.quotesInfo)))
-	}()
+	// 加载合约信息
+	go c.loadSymbols()
 
 	// 获取行情服务器地址
 	wsQuoteURL, err := c.Auth.GetMdUrl(true, false)
@@ -321,6 +348,177 @@ func (c *Client) Close() error {
 // Logger 获取logger
 func (c *Client) Logger() *zap.Logger {
 	return c.logger
+}
+
+// loadSymbols 加载合约信息
+func (c *Client) loadSymbols() {
+	var data interface{}
+	var err error
+	var source string
+
+	switch c.config.SymbolsCacheStrategy {
+	case CacheStrategyAlwaysNetwork:
+		// 总是从网络获取
+		data, err = c.fetchSymbolsFromNetwork()
+		source = "network"
+		if err == nil && data != nil {
+			// 保存到缓存
+			c.saveSymbolsCache(data)
+		}
+
+	case CacheStrategyPreferLocal:
+		// 优先使用本地缓存
+		data, err = c.loadSymbolsFromCache()
+		if err != nil || data == nil {
+			// 缓存不存在或加载失败，从网络获取
+			c.logger.Info("Local cache not available, fetching from network")
+			data, err = c.fetchSymbolsFromNetwork()
+			source = "network"
+			if err == nil && data != nil {
+				c.saveSymbolsCache(data)
+			}
+		} else {
+			source = "cache"
+		}
+
+	case CacheStrategyAutoRefresh:
+		// 检查缓存是否过期
+		needRefresh := c.isCacheExpired()
+		if needRefresh {
+			// 缓存过期，从网络获取
+			c.logger.Info("Cache expired, fetching from network")
+			data, err = c.fetchSymbolsFromNetwork()
+			source = "network"
+			if err == nil && data != nil {
+				c.saveSymbolsCache(data)
+			}
+		} else {
+			// 使用缓存
+			data, err = c.loadSymbolsFromCache()
+			if err != nil || data == nil {
+				// 缓存加载失败，从网络获取
+				c.logger.Info("Failed to load cache, fetching from network")
+				data, err = c.fetchSymbolsFromNetwork()
+				source = "network"
+				if err == nil && data != nil {
+					c.saveSymbolsCache(data)
+				}
+			} else {
+				source = "cache"
+			}
+		}
+	}
+
+	if err != nil {
+		c.logger.Error("Failed to load symbols", zap.Error(err))
+		return
+	}
+
+	// 处理合约数据
+	if quotesMap, ok := data.(map[string]interface{}); ok {
+		c.mu.Lock()
+		for symbol, quoteData := range quotesMap {
+			if quoteMap, ok := quoteData.(map[string]interface{}); ok {
+				if class, ok := quoteMap["class"].(string); ok && class == "FUTURE_OPTION" {
+					quoteMap["class"] = "OPTION"
+				}
+				c.quotesInfo[symbol] = quoteMap
+			}
+		}
+		c.mu.Unlock()
+	}
+
+	c.logger.Info("Symbols loaded",
+		zap.String("source", source),
+		zap.Int("count", len(c.quotesInfo)))
+}
+
+// fetchSymbolsFromNetwork 从网络获取合约信息
+func (c *Client) fetchSymbolsFromNetwork() (interface{}, error) {
+	data, err := FetchJSON(c.config.SymbolsServerURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch from network: %w", err)
+	}
+	return data, nil
+}
+
+// loadSymbolsFromCache 从本地缓存加载合约信息
+func (c *Client) loadSymbolsFromCache() (interface{}, error) {
+	cachePath := c.getSymbolsCachePath()
+
+	// 检查文件是否存在
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("cache file not exists: %s", cachePath)
+	}
+
+	// 读取缓存文件
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("read cache file: %w", err)
+	}
+
+	// 解析 JSON
+	var result interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal cache: %w", err)
+	}
+
+	return result, nil
+}
+
+// saveSymbolsCache 保存合约信息到本地缓存
+func (c *Client) saveSymbolsCache(data interface{}) error {
+	cachePath := c.getSymbolsCachePath()
+
+	// 确保缓存目录存在
+	cacheDir := filepath.Dir(cachePath)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		c.logger.Error("Failed to create cache directory",
+			zap.String("dir", cacheDir),
+			zap.Error(err))
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+
+	// 序列化为 JSON
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		c.logger.Error("Failed to marshal symbols", zap.Error(err))
+		return fmt.Errorf("marshal json: %w", err)
+	}
+
+	// 写入文件
+	if err := os.WriteFile(cachePath, jsonData, 0644); err != nil {
+		c.logger.Error("Failed to write cache file",
+			zap.String("path", cachePath),
+			zap.Error(err))
+		return fmt.Errorf("write cache file: %w", err)
+	}
+
+	c.logger.Debug("Symbols cache saved", zap.String("path", cachePath))
+	return nil
+}
+
+// isCacheExpired 检查缓存是否过期
+func (c *Client) isCacheExpired() bool {
+	cachePath := c.getSymbolsCachePath()
+
+	// 获取文件信息
+	fileInfo, err := os.Stat(cachePath)
+	if err != nil {
+		// 文件不存在视为过期
+		return true
+	}
+
+	// 检查文件修改时间
+	modTime := fileInfo.ModTime()
+	elapsed := time.Since(modTime).Seconds()
+
+	return elapsed > float64(c.config.SymbolsCacheMaxAge)
+}
+
+// getSymbolsCachePath 获取缓存文件路径
+func (c *Client) getSymbolsCachePath() string {
+	return filepath.Join(c.config.SymbolsCacheDir, "latest.json")
 }
 
 // Context 获取上下文

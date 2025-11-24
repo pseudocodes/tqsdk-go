@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"math"
@@ -443,6 +443,9 @@ type SeriesData struct {
 
 // GetSymbolKlines 获取指定合约的K线数据
 func (sd *SeriesData) GetSymbolKlines(symbol string) *KlineSeriesData {
+	if len(sd.Symbols) == 0 || symbol != sd.Symbols[0] {
+		return nil
+	}
 	if sd.IsMulti && sd.Multi != nil {
 		// 从多合约数据中提取单个合约
 		result := &KlineSeriesData{

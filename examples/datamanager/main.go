@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
 )
 
 // DataManager Watch 功能示例

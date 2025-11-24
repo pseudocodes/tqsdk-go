@@ -1,4 +1,4 @@
-package tqsdk
+package shinny
 
 import (
 	"encoding/json"
@@ -152,11 +152,13 @@ func (c AccessTokenClaims) Valid() error {
 var _ jwt.Claims = &AccessTokenClaims{}
 
 type BrokerInfo struct {
-	Category   []string `json:"category"`
-	URL        string   `json:"url"`
-	BrokerType string   `json:"broker_type"`
-	SmType     string   `json:"smtype,omitempty" csv:"sm_type,omitempty"`
-	SmConfig   string   `json:"smconfig,omitempty" csv:"sm_config,omitempty"`
+	Category        []string `json:"category"`
+	URL             string   `json:"url"`
+	BrokerType      string   `json:"broker_type,omitempty"`
+	SmType          string   `json:"smtype,omitempty"`
+	SmConfig        string   `json:"smconfig,omitempty"`
+	ConditionType   string   `json:"condition_type,omitempty"`
+	ConditionConfig string   `json:"condition_config,omitempty"`
 }
 
 type MdURL struct {
