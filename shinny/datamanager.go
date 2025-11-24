@@ -217,6 +217,7 @@ func (dm *DataManager) mergeQuotes(target map[string]interface{}, quotes map[str
 }
 
 // IsChanging 判断指定路径的数据是否在最近一次更新中发生了变化
+// 只检查路径最后一层的 epoch
 func (dm *DataManager) IsChanging(pathArray []string) bool {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
@@ -228,18 +229,19 @@ func (dm *DataManager) IsChanging(pathArray []string) bool {
 			return false
 		}
 
-		// 检查当前层级的 epoch
-		if epoch, ok := dm.getEpoch(val); ok && epoch == dm.epoch {
-			return true
+		// 如果是最后一层，检查其 epoch
+		if i == len(pathArray)-1 {
+			if epoch, ok := dm.getEpoch(val); ok && epoch == dm.epoch {
+				return true
+			}
+			return false
 		}
 
 		// 继续往下查找
-		if i < len(pathArray)-1 {
-			if m, ok := val.(map[string]interface{}); ok {
-				d = m
-			} else {
-				return false
-			}
+		if m, ok := val.(map[string]interface{}); ok {
+			d = m
+		} else {
+			return false
 		}
 	}
 

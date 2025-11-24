@@ -223,23 +223,27 @@ type TickSeriesData struct {
 
 // Account 账户资金信息
 type Account struct {
-	CurrMargin       float64 `json:"curr_margin"`       // 当前保证金
-	FrozenMargin     float64 `json:"frozen_margin"`     // 冻结保证金
-	FrozenCommission float64 `json:"frozen_commission"` // 冻结手续费
-	FrozenPremium    float64 `json:"frozen_premium"`    // 冻结权利金
-	Available        float64 `json:"available"`         // 可用资金
-	Balance          float64 `json:"balance"`           // 账户权益
-	PreBalance       float64 `json:"pre_balance"`       // 昨日权益
-	Deposit          float64 `json:"deposit"`           // 入金
-	Withdraw         float64 `json:"withdraw"`          // 出金
-	CloseProfit      float64 `json:"close_profit"`      // 平仓盈亏
-	PositionProfit   float64 `json:"position_profit"`   // 持仓盈亏
-	Commission       float64 `json:"commission"`        // 手续费
-	Premium          float64 `json:"premium"`           // 权利金
-	StaticBalance    float64 `json:"static_balance"`    // 静态权益
-	RiskRatio        float64 `json:"risk_ratio"`        // 风险度
-	MarketValue      float64 `json:"market_value"`      // 市值
-	CashAssets       float64 `json:"cash_assets"`       // 现金资产
+	Available        float64 `json:"available,omitempty"`         // 可用资金
+	Balance          float64 `json:"balance,omitempty"`           // 账户权益
+	CloseProfit      int     `json:"close_profit,omitempty"`      // 本交易日内平仓盈亏
+	Commission       int     `json:"commission,omitempty"`        // 手续费 本交易日内交纳的手续费
+	CtpAvailable     float64 `json:"ctp_available,omitempty"`     //
+	CtpBalance       float64 `json:"ctp_balance,omitempty"`       //
+	Currency         string  `json:"currency,omitempty"`          // "CNY" (币种)
+	Deposit          int     `json:"deposit,omitempty"`           // 入金金额 本交易日内的入金金额
+	FloatProfit      int     `json:"float_profit,omitempty"`      // 浮动盈亏
+	FrozenCommission int     `json:"frozen_commission,omitempty"` // 冻结手续费
+	FrozenMargin     int     `json:"frozen_margin,omitempty"`     // 冻结保证金
+	FrozenPremium    int     `json:"frozen_premium,omitempty"`    // 冻结权利金
+	Margin           float64 `json:"margin,omitempty"`            // 保证金占用
+	MarketValue      int     `json:"market_value,omitempty"`      // 期权市值
+	PositionProfit   int     `json:"position_profit,omitempty"`   // 持仓盈亏
+	PreBalance       float64 `json:"pre_balance,omitempty"`       // 昨日账户权益
+	Premium          int     `json:"premium,omitempty"`           // 权利金 本交易日内交纳的权利金
+	RiskRatio        float64 `json:"risk_ratio,omitempty"`        //风险度 = 1 - available / balance
+	StaticBalance    float64 `json:"static_balance,omitempty"`    // 静态权益
+	UserID           string  `json:"user_id"`                     //用户ID
+	Withdraw         int     `json:"withdraw,omitempty"`          //本交易日内的出金金额
 
 	// 内部字段
 	epoch int64 // 数据版本
@@ -247,68 +251,95 @@ type Account struct {
 
 // Position 持仓信息
 type Position struct {
-	ExchangeID          string  `json:"exchange_id"`           // 交易所代码
-	InstrumentID        string  `json:"instrument_id"`         // 合约代码
-	VolumeShortToday    int64   `json:"volume_short_today"`    // 今空头持仓量
-	VolumeShortHis      int64   `json:"volume_short_his"`      // 昨空头持仓量
-	VolumeLongToday     int64   `json:"volume_long_today"`     // 今多头持仓量
-	VolumeLongHis       int64   `json:"volume_long_his"`       // 昨多头持仓量
-	VolumeLongFrozen    int64   `json:"volume_long_frozen"`    // 冻结多头持仓量
-	VolumeShortFrozen   int64   `json:"volume_short_frozen"`   // 冻结空头持仓量
-	OpenPriceLong       float64 `json:"open_price_long"`       // 多头开仓均价
-	OpenPriceShort      float64 `json:"open_price_short"`      // 空头开仓均价
-	OpenCostLong        float64 `json:"open_cost_long"`        // 多头开仓成本
-	OpenCostShort       float64 `json:"open_cost_short"`       // 空头开仓成本
-	PositionPriceLong   float64 `json:"position_price_long"`   // 多头持仓均价
-	PositionPriceShort  float64 `json:"position_price_short"`  // 空头持仓均价
-	PositionCostLong    float64 `json:"position_cost_long"`    // 多头持仓成本
-	PositionCostShort   float64 `json:"position_cost_short"`   // 空头持仓成本
-	FloatProfitLong     float64 `json:"float_profit_long"`     // 多头浮动盈亏
-	FloatProfitShort    float64 `json:"float_profit_short"`    // 空头浮动盈亏
-	FloatProfit         float64 `json:"float_profit"`          // 总浮动盈亏
-	PositionProfitLong  float64 `json:"position_profit_long"`  // 多头持仓盈亏
-	PositionProfitShort float64 `json:"position_profit_short"` // 空头持仓盈亏
-	PositionProfit      float64 `json:"position_profit"`       // 总持仓盈亏
-	MarginLong          float64 `json:"margin_long"`           // 多头占用保证金
-	MarginShort         float64 `json:"margin_short"`          // 空头占用保证金
-	Margin              float64 `json:"margin"`                // 占用保证金
-
+	UserID       string `json:"user_id"`       // 用户id
+	ExchangeID   string `json:"exchange_id"`   // 'shfe' 交易所
+	InstrumentID string `json:"instrument_id"` //'rb1901' 交易所内的合约代码
+	// 持仓手数与冻结手数
+	VolumeLongToday        int64   `json:"volume_long_today"`         // 多头今仓持仓手数
+	VolumeLongHis          int64   `json:"volume_long_his"`           // 多头老仓持仓手数
+	VolumeLong             int64   `json:"volume_long"`               // 多头持仓手数
+	VolumeLongFrozenToday  int64   `json:"volume_long_frozen_today"`  // 多头今仓冻结手数
+	VolumeLongFrozenHis    int64   `json:"volume_long_frozen_his"`    // 多头老仓冻结手数
+	VolumeLongFrozen       int64   `json:"volume_long_frozen"`        // 多头持仓冻结
+	VolumeShortToday       int64   `json:"volume_short_today"`        // 空头今仓持仓手数
+	VolumeShortHis         int64   `json:"volume_short_his"`          // 空头老仓持仓手数
+	VolumeShort            int64   `json:"volume_short"`              // 空头持仓手数
+	VolumeShortFrozenToday int64   `json:"volume_short_frozen_today"` // 空头今仓冻结手数
+	VolumeShortFrozenHis   int64   `json:"volume_short_frozen_his"`   // 空头老仓冻结手数
+	VolumeShortFrozen      int64   `json:"volume_short_frozen"`       // 空头持仓冻结
+	VolumeLongYd           int64   `json:"volume_long_yd"`
+	VolumeShortYd          int64   `json:"volume_short_yd"`
+	PosLongHis             int64   `json:"pos_long_his"`          // 多头老仓手数
+	PosLongToday           int64   `json:"pos_long_today"`        // 多头今仓手数
+	PosShortHis            int64   `json:"pos_short_his"`         //空头老仓手数
+	PosShortToday          int64   `json:"pos_short_today"`       // 空头今仓手数
+	OpenPriceLong          float64 `json:"open_price_long"`       // 多头开仓均价
+	OpenPriceShort         float64 `json:"open_price_short"`      // 空头开仓均价
+	OpenCostLong           float64 `json:"open_cost_long"`        // 多头开仓市值
+	OpenCostShort          float64 `json:"open_cost_short"`       // 空头开仓市值
+	PositionPriceLong      float64 `json:"position_price_long"`   // 多头持仓均价
+	PositionPriceShort     float64 `json:"position_price_short"`  // 空头持仓均价
+	PositionCostLong       float64 `json:"position_cost_long"`    // 多头持仓市值
+	PositionCostShort      float64 `json:"position_cost_short"`   // 空头持仓市值
+	LastPrice              float64 `json:"last_price"`            // 最新价
+	FloatProfitLong        float64 `json:"float_profit_long"`     // 多头浮动盈亏
+	FloatProfitShort       float64 `json:"float_profit_short"`    // 空头浮动盈亏
+	FloatProfit            float64 `json:"float_profit"`          // 浮动盈亏 = floatProfitLong + floatProfitShort
+	PositionProfitLong     float64 `json:"position_profit_long"`  // 多头持仓盈亏
+	PositionProfitShort    float64 `json:"position_profit_short"` // 空头持仓盈亏
+	PositionProfit         float64 `json:"position_profit"`       // 持仓盈亏 = positionProfitLong + positionProfitShort
+	MarginLong             float64 `json:"margin_long"`           // 多头持仓占用保证金
+	MarginShort            float64 `json:"margin_short"`          // 空头持仓占用保证金
+	Margin                 float64 `json:"margin"`                // 持仓占用保证金 = marginLong + marginShort
+	MarketValueLong        float64 `json:"market_value_long"`     // 期权权利方市值(始终 >= 0)
+	MarketValueShort       float64 `json:"market_value_short"`    //期权义务方市值(始终 <= 0)
+	MarketValue            float64 `json:"market_value"`
 	// 内部字段
 	epoch int64 // 数据版本
 }
 
 // Order 委托单信息
 type Order struct {
-	OrderID         string  `json:"order_id"`         // 委托单ID
-	ExchangeID      string  `json:"exchange_id"`      // 交易所代码
-	InstrumentID    string  `json:"instrument_id"`    // 合约代码
-	Direction       string  `json:"direction"`        // 下单方向 BUY/SELL
-	Offset          string  `json:"offset"`           // 开平标志 OPEN/CLOSE/CLOSETODAY
+	// order_id, 用于唯一标识一个委托单. 对于一个USER, order_id 是永远不重复的
+	// 委托单初始属性 (由下单者在下单前确定, 不再改变)
+	Seqno           int64   `json:"seqno"`            // 部序号
+	UserID          string  `json:"user_id"`          // 用户id
+	OrderID         string  `json:"order_id"`         // 委托单id, 对于一个user, orderId 是永远不重复的
+	ExchangeID      string  `json:"exchange_id"`      // 交易所
+	InstrumentID    string  `json:"instrument_id"`    // 在交易所中的合约代码
+	Direction       string  `json:"direction"`        // 下单方向 (buy=买, sell=卖)
+	Offset          string  `json:"offset"`           // 开平标志 (open=开仓, close=平仓, closetoday=平今)
 	VolumeOrign     int64   `json:"volume_orign"`     // 总报单手数
-	VolumeLeft      int64   `json:"volume_left"`      // 未成交手数
-	PriceType       string  `json:"price_type"`       // 价格类型 LIMIT/ANY
-	LimitPrice      float64 `json:"limit_price"`      // 委托价格
-	VolumeCondition string  `json:"volume_condition"` // 数量条件 ANY/MIN/ALL
-	TimeCondition   string  `json:"time_condition"`   // 时间条件 IOC/GFS/GFD/GTC/GFA
-	InsertDateTime  int64   `json:"insert_date_time"` // 下单时间(纳秒)
-	Status          string  `json:"status"`           // 委托单状态 ALIVE/FINISHED
-
+	PriceType       string  `json:"price_type"`       // 指令类型 (any=市价, limit=限价)
+	LimitPrice      float64 `json:"limit_price"`      // 委托价格, 仅当 priceType = limit 时有效
+	TimeCondition   string  `json:"time_condition"`   // 时间条件 (ioc=立即完成，否则撤销, gfs=本节有效, *gfd=当日有效, gtc=撤销前有效, gfa=集合竞价有效)
+	VolumeCondition string  `json:"volume_condition"` // 数量条件 (any=任何数量, min=最小数量, all=全部数量)
+	// this? =单后获得的信息;由期货公司返回, 不会改变)
+	InsertDateTime  int64   `json:"insert_date_time"`  // 1501074872000000000 下单时间(按北京时间)，自unix epoch(1970-01-01 00:00:00 gmt)以来的纳秒数
+	ExchangeOrderID string  `json:"exchange_order_id"` // 交易所单号
+	Status          string  `json:"status"`            //  =托单当前状态;this.status = ''; // 委托单状态, (alive=有效, finished=已完)
+	VolumeLeft      int64   `json:"volume_left"`       // 未成交手数
+	FrozenMargin    float64 `json:"frozen_margin"`     // 冻结保证金
+	LastMsg         string  `json:"last_msg"`          // "报单成功" 委托单状态信息
 	// 内部字段
 	epoch int64 // 数据版本
 }
 
 // Trade 成交记录
 type Trade struct {
-	TradeID       string  `json:"trade_id"`        // 成交ID
-	OrderID       string  `json:"order_id"`        // 委托单ID
-	ExchangeID    string  `json:"exchange_id"`     // 交易所代码
-	InstrumentID  string  `json:"instrument_id"`   // 合约代码
-	Direction     string  `json:"direction"`       // 成交方向 BUY/SELL
-	Offset        string  `json:"offset"`          // 开平标志 OPEN/CLOSE/CLOSETODAY
-	Price         float64 `json:"price"`           // 成交价格
-	Volume        int64   `json:"volume"`          // 成交手数
-	TradeDateTime int64   `json:"trade_date_time"` // 成交时间(纳秒)
-	Commission    float64 `json:"commission"`      // 手续费
+	Seqno           int64   `json:"seqno"`             // 内部序号
+	UserID          string  `json:"user_id"`           // 账户号
+	TradeID         string  `json:"trade_id"`          // 成交ID, 对于一个用户的所有成交，这个ID都是不重复的
+	ExchangeID      string  `json:"exchange_id"`       // 'SHFE' 交易所
+	InstrumentID    string  `json:"instrument_id"`     // 'rb1901' 交易所内的合约代码
+	OrderID         string  `json:"order_id"`          // 委托单ID, 对于一个用户的所有委托单，这个ID都是不重复的
+	ExchangeTradeID string  `json:"exchange_trade_id"` // 交易所成交单号
+	Direction       string  `json:"direction"`         // 下单方向 (BUY=买, SELL=卖)
+	Offset          string  `json:"offset"`            // 开平标志 (OPEN=开仓, CLOSE=平仓, CLOSETODAY=平今)
+	Volume          int64   `json:"volume"`            // 成交手数
+	Price           float64 `json:"price"`             // 成交价格
+	TradeDateTime   int64   `json:"trade_date_time"`   // 成交时间, epoch nano
+	Commission      float64 `json:"commission"`        // 成交手续费
 
 	// 内部字段
 	epoch int64 // 数据版本

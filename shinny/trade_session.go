@@ -11,13 +11,14 @@ import (
 
 // TradeSession 交易会话
 type TradeSession struct {
-	client *Client
-	broker string
-	userID string
-	ctx    context.Context
-	cancel context.CancelFunc
-	ws     *TqTradeWebsocket
-	dm     *DataManager
+	client   *Client
+	broker   string
+	userID   string
+	password string // 保存密码用于重连
+	ctx      context.Context
+	cancel   context.CancelFunc
+	ws       *TqTradeWebsocket
+	dm       *DataManager
 
 	// 流式 Channels（用于 Channel-based API）
 	accountCh      chan *Account
@@ -89,6 +90,7 @@ func NewTradeSession(ctx context.Context, client *Client, broker, userID, passwo
 		client:         client,
 		broker:         broker,
 		userID:         userID,
+		password:       password,
 		ctx:            sessionCtx,
 		cancel:         cancel,
 		ws:             ws,
@@ -99,7 +101,7 @@ func NewTradeSession(ctx context.Context, client *Client, broker, userID, passwo
 		orderCh:        make(chan *Order, 100),
 		tradeCh:        make(chan *Trade, 100),
 		notificationCh: make(chan *Notification, 10),
-		running:        true,
+		running:        false,
 	}
 
 	// 注册 WebSocket 通知回调
@@ -116,32 +118,56 @@ func NewTradeSession(ctx context.Context, client *Client, broker, userID, passwo
 		session.emitNotification(notification)
 	})
 
-	// 初始化连接
-	if err := ws.Init(false); err != nil {
+	// 自动连接（保持向后兼容）
+	if err := session.Connect(ctx); err != nil {
 		cancel()
-		return nil, NewError("NewTradeSession.Init", err)
+		return nil, err
 	}
-
-	// 登录
-	loginContent := map[string]interface{}{
-		"aid":       "req_login",
-		"bid":       broker,
-		"user_name": userID,
-		"password":  password,
-	}
-
-	if client.config.ClientAppID != "" {
-		loginContent["client_app_id"] = client.config.ClientAppID
-		loginContent["client_system_info"] = client.config.ClientSystemInfo
-	}
-
-	ws.Send(loginContent)
-
-	// 启动数据监听
-	session.wg.Add(1)
-	go session.watchData()
 
 	return session, nil
+}
+
+// Connect 连接并登录交易服务器
+//
+// 此方法是幂等的，如果已连接则直接返回 nil
+// 可以用于重连场景
+func (ts *TradeSession) Connect(ctx context.Context) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	// 如果已登录，直接返回
+	if ts.loggedIn {
+		return nil
+	}
+
+	// 初始化 WebSocket 连接
+	if err := ts.ws.Init(false); err != nil {
+		return NewError("TradeSession.Connect.Init", err)
+	}
+
+	// 发送登录请求
+	loginContent := map[string]interface{}{
+		"aid":       "req_login",
+		"bid":       ts.broker,
+		"user_name": ts.userID,
+		"password":  ts.password,
+	}
+
+	if ts.client.config.ClientAppID != "" {
+		loginContent["client_app_id"] = ts.client.config.ClientAppID
+		loginContent["client_system_info"] = ts.client.config.ClientSystemInfo
+	}
+
+	ts.ws.Send(loginContent)
+
+	// 启动数据监听（仅第一次连接时启动）
+	if !ts.running {
+		ts.running = true
+		ts.wg.Add(1)
+		go ts.watchData()
+	}
+
+	return nil
 }
 
 // watchData 监听数据更新
@@ -679,11 +705,16 @@ func (ts *TradeSession) emitNotification(notification *Notification) {
 	}
 }
 
-// IsLoggedIn 检查是否已登录
-func (ts *TradeSession) IsLoggedIn() bool {
+// IsReady 检查交易会话是否已就绪（已登录）
+func (ts *TradeSession) IsReady() bool {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	return ts.loggedIn
+}
+
+// IsLoggedIn 检查是否已登录（IsReady 的别名，保持向后兼容）
+func (ts *TradeSession) IsLoggedIn() bool {
+	return ts.IsReady()
 }
 
 // Close 关闭会话

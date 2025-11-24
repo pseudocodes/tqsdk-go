@@ -32,8 +32,8 @@ type Client struct {
 	// Series API
 	seriesAPI *SeriesAPI
 
-	// 交易会话
-	tradeSessions   map[string]*TradeSession
+	// 交易会话（使用接口类型，支持实盘/模拟/回测等不同实现）
+	tradeSessions   map[string]Trader
 	tradeSessionsMu sync.RWMutex
 
 	// 控制
@@ -152,7 +152,7 @@ func NewClient(ctx context.Context, username, password string, opts ...ClientOpt
 		Auth:          tqauth,
 		dm:            NewDataManager(initialData),
 		quotesInfo:    make(map[string]map[string]interface{}),
-		tradeSessions: make(map[string]*TradeSession),
+		tradeSessions: make(map[string]Trader),
 		ctx:           clientCtx,
 		cancel:        cancel,
 	}
@@ -289,15 +289,25 @@ func (c *Client) SubscribeQuote(ctx context.Context, symbols ...string) (*QuoteS
 }
 
 // LoginTrade 登录交易账户，创建交易会话
-func (c *Client) LoginTrade(ctx context.Context, broker, userID, password string) (*TradeSession, error) {
+//
+// 返回 Trader 接口，可以是实盘交易会话或其他实现（如模拟交易、回测等）
+//
+// 示例：
+//
+//	trader, err := client.LoginTrade(ctx, "simnow", "user", "pass")
+//	if err != nil {
+//	    return err
+//	}
+//	defer trader.Close()
+func (c *Client) LoginTrade(ctx context.Context, broker, userID, password string) (Trader, error) {
 	c.tradeSessionsMu.Lock()
 	defer c.tradeSessionsMu.Unlock()
 
 	key := fmt.Sprintf("%s:%s", broker, userID)
 
 	// 如果会话已存在，返回现有会话
-	if session, exists := c.tradeSessions[key]; exists {
-		return session, nil
+	if trader, exists := c.tradeSessions[key]; exists {
+		return trader, nil
 	}
 
 	// 创建新会话
@@ -308,6 +318,54 @@ func (c *Client) LoginTrade(ctx context.Context, broker, userID, password string
 
 	c.tradeSessions[key] = session
 	return session, nil
+}
+
+// RegisterTrader 注册自定义交易者（用于虚拟交易、回测等）
+//
+// 此方法允许你注册自定义的 Trader 实现，例如 VirtualTrader 或回测引擎。
+// 注册后，可以通过相同的 key 获取该 Trader。
+//
+// 参数：
+//   - key: 交易者标识，建议格式 "type:id"，例如 "virtual:test1"
+//   - trader: Trader 接口实现
+//
+// 示例：
+//
+//	// 注册虚拟交易者
+//	virtualTrader := shinny.NewVirtualTrader(ctx, 1000000.0, 0.0001)
+//	client.RegisterTrader("virtual:test1", virtualTrader)
+//
+//	// 注册回测引擎
+//	backtestTrader := NewBacktestTrader(startTime, endTime, 1000000.0)
+//	client.RegisterTrader("backtest:strategy1", backtestTrader)
+func (c *Client) RegisterTrader(key string, trader Trader) {
+	c.tradeSessionsMu.Lock()
+	defer c.tradeSessionsMu.Unlock()
+
+	c.tradeSessions[key] = trader
+}
+
+// GetTrader 获取已注册的交易者
+//
+// 参数：
+//   - key: 交易者标识
+//
+// 返回：
+//   - Trader: 交易者接口，如果不存在返回 nil
+//   - bool: 是否存在
+//
+// 示例：
+//
+//	trader, exists := client.GetTrader("virtual:test1")
+//	if exists {
+//	    trader.InsertOrder(ctx, req)
+//	}
+func (c *Client) GetTrader(key string) (Trader, bool) {
+	c.tradeSessionsMu.RLock()
+	defer c.tradeSessionsMu.RUnlock()
+
+	trader, exists := c.tradeSessions[key]
+	return trader, exists
 }
 
 // GetQuoteInfo 获取合约信息
