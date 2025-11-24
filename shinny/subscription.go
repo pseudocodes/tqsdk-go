@@ -39,7 +39,7 @@ func NewQuoteSubscription(ctx context.Context, client *Client, symbols ...string
 		client:  client,
 		ctx:     subCtx,
 		cancel:  cancel,
-		quoteCh: make(chan *Quote, 100),
+		quoteCh: make(chan *Quote, 1000),
 		symbols: make(map[string]bool),
 		running: true,
 	}
