@@ -263,7 +263,7 @@ func (ws *TqWebsocket) receiveLoop() {
 		}
 
 		// 发送 peek_message
-		ws.Send(map[string]string{"aid": "peek_message"})
+		ws.Send(`{"aid": "peek_message"}`)
 	}
 }
 

@@ -18,7 +18,8 @@ func HistoryKlineWithLeftIDExample() {
 
 	client, err := tqsdk.NewClient(ctx, username, password,
 		tqsdk.WithLogLevel("info"),
-		tqsdk.WithViewWidth(1000000),
+		tqsdk.WithViewWidth(100000),
+		tqsdk.WithDevelopment(true),
 	)
 	if err != nil {
 		fmt.Printf("创建客户端失败: %v\n", err)
@@ -31,22 +32,26 @@ func HistoryKlineWithLeftIDExample() {
 		fmt.Printf("初始化行情功能失败: %v\n", err)
 		return
 	}
+	targetSymbol := "SHFE.au2512"
 
 	fmt.Println("==================== 历史 K线订阅示例（使用 left_kline_id） ====================")
 
 	// 从指定的 K线 ID 开始订阅 8000 根历史 K线
 	// 注意：数据会分片返回（每片最多 3000 根）
-	leftKlineID := int64(105761)
-	sub, err := client.Series().KlineHistory(ctx, "SHFE.au2512", 60*time.Second, 8000, leftKlineID)
+	// leftKlineID := int64(105761)
+	leftKlineID := int64(10000)
+
+	sub, err := client.Series().KlineHistory(ctx, targetSymbol, 60*time.Second, 8010, leftKlineID)
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
 		return
 	}
+	sub.Start()
 	defer sub.Close()
 
 	// 监听数据更新
 	sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
-		symData := data.GetSymbolKlines("SHFE.au2512")
+		symData := data.GetSymbolKlines(targetSymbol)
 
 		if info.HasChartSync {
 			fmt.Printf("✅ Chart 初次同步完成\n")

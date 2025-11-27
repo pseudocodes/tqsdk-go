@@ -221,9 +221,7 @@ func (sa *SeriesAPI) SubscribeAndStart(ctx context.Context, options SeriesOption
 	}
 
 	// 立即启动监听
-	if err := sub.Start(); err != nil {
-		return nil, err
-	}
+	sub.Start()
 
 	return sub, nil
 }
@@ -255,10 +253,11 @@ type SeriesSubscription struct {
 	onError     func(error)
 
 	// 状态跟踪
-	lastIDs     map[string]int64 // symbol -> lastID
-	lastLeftID  int64
-	lastRightID int64
-	chartReady  bool
+	lastIDs      map[string]int64 // symbol -> lastID
+	lastLeftID   int64
+	lastRightID  int64
+	chartReady   bool
+	hasChartSync bool
 
 	mu      sync.RWMutex
 	running bool
@@ -287,31 +286,25 @@ func NewSeriesSubscription(ctx context.Context, client *Client, dm *DataManager,
 		sub.lastIDs[symbol] = -1
 	}
 
-	// 发送 set_chart 请求
-	if err := sub.sendSetChart(); err != nil {
-		cancel()
-		return nil, err
-	}
-
+	// 不在这里发送 set_chart 请求，等到 watch() 启动后再发送
 	// 不在这里启动监听，等待用户注册回调后调用 Start()
 
 	return sub, nil
 }
 
 // Start 启动订阅监听（在注册回调后调用）
-func (sub *SeriesSubscription) Start() error {
+func (sub *SeriesSubscription) Start() {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 
 	if sub.running {
-		return nil // 已经启动
+		return // 已经启动
 	}
 
 	sub.running = true
 	sub.wg.Add(1)
 	go sub.watch()
 
-	return nil
 }
 
 // sendSetChart 发送 set_chart 请求
@@ -395,6 +388,18 @@ func (sub *SeriesSubscription) watch() {
 		sub.processUpdate()
 	})
 
+	// 监听已准备好，现在发送 set_chart 请求
+	if err := sub.sendSetChart(); err != nil {
+		if sub.client.logger != nil {
+			sub.client.logger.Error("Failed to send set_chart",
+				zap.String("chart_id", sub.options.ChartID),
+				zap.Error(err))
+		}
+		if sub.onError != nil {
+			sub.onError(err)
+		}
+	}
+
 	// 等待上下文取消
 	<-sub.ctx.Done()
 }
@@ -462,20 +467,21 @@ func (sub *SeriesSubscription) processUpdate() {
 	// 检测 Chart 范围变化
 	sub.detectChartRangeChange(seriesData, updateInfo)
 
-	// 调用回调
-	if onUpdate != nil {
-		go onUpdate(seriesData, updateInfo)
-	}
+	if sub.hasChartSync {
+		// 调用回调
+		if onUpdate != nil && updateInfo.ChartReady {
+			go onUpdate(seriesData, updateInfo)
+		}
 
-	// 调用 OnNewBar 回调（传递完整序列数据）
-	if onNewBar != nil && updateInfo.HasNewBar {
-		go onNewBar(seriesData)
-	}
+		// 调用 OnNewBar 回调（传递完整序列数据）
+		if onNewBar != nil && (updateInfo.HasNewBar && updateInfo.ChartReady) {
+			go onNewBar(seriesData)
+		}
 
-	// 调用 OnBarUpdate 回调（传递完整序列数据）
-	// if onBarUpdate != nil && updateInfo.HasBarUpdate && !updateInfo.HasNewBar {
-	if onBarUpdate != nil && updateInfo.HasBarUpdate {
-		go onBarUpdate(seriesData)
+		// 调用 OnBarUpdate 回调（传递完整序列数据）
+		if onBarUpdate != nil && updateInfo.HasBarUpdate && updateInfo.ChartReady {
+			go onBarUpdate(seriesData)
+		}
 	}
 }
 
@@ -495,6 +501,10 @@ func (sub *SeriesSubscription) detectNewBars(data *SeriesData, info *UpdateInfo)
 		}
 
 		lastID := sub.lastIDs[symbol]
+		sub.client.logger.Debug("detectNewBars",
+			zap.String("symbol", symbol),
+			zap.Int64("currentID", currentID),
+			zap.Int64("lastID", lastID))
 		// if currentID > lastID && lastID != -1 {
 		if currentID > lastID {
 			info.HasNewBar = true
@@ -532,23 +542,28 @@ func (sub *SeriesSubscription) detectChartRangeChange(data *SeriesData, info *Up
 			}
 		}
 	}
-
+	sub.client.logger.Debug("chart1", zap.Any("chart", chart))
 	if chart != nil {
 		if chart.LeftID != sub.lastLeftID || chart.RightID != sub.lastRightID {
-			if sub.lastLeftID != -1 || sub.lastRightID != -1 {
-				info.ChartRangeChanged = true
-				info.OldLeftID = sub.lastLeftID
-				info.OldRightID = sub.lastRightID
-				info.NewLeftID = chart.LeftID
-				info.NewRightID = chart.RightID
-			}
+			// if sub.lastLeftID != -1 || sub.lastRightID != -1 {
+			info.ChartRangeChanged = true
+			info.OldLeftID = sub.lastLeftID
+			info.OldRightID = sub.lastRightID
+			info.NewLeftID = chart.LeftID
+			info.NewRightID = chart.RightID
+			// }
 			sub.lastLeftID = chart.LeftID
 			sub.lastRightID = chart.RightID
 		}
 
 		if chart.Ready && !sub.chartReady {
-			info.HasChartSync = true
+			// 首次完成同步
 			sub.chartReady = true
+			sub.hasChartSync = true
+
+			info.HasChartSync = true
+			info.HasBarUpdate = true
+			info.HasNewBar = true
 		}
 
 		// 检测 Chart 数据传输是否完成（分片传输场景）
@@ -565,6 +580,7 @@ func (sub *SeriesSubscription) detectChartRangeChange(data *SeriesData, info *Up
 			}
 		}
 	}
+
 }
 
 // getSingleKlineData 获取单合约 K线数据

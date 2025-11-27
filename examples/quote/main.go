@@ -85,8 +85,11 @@ func SingleKlineSubscriptionExample() {
 	username := os.Getenv("SHINNYTECH_ID")
 	password := os.Getenv("SHINNYTECH_PW")
 
+	symbol := "SHFE.au2602"
+
 	client, err := tqsdk.NewClient(ctx, username, password,
 		tqsdk.WithLogLevel("info"),
+		tqsdk.WithDevelopment(true),
 	)
 	if err != nil {
 		fmt.Printf("创建客户端失败: %v\n", err)
@@ -103,7 +106,7 @@ func SingleKlineSubscriptionExample() {
 	fmt.Println("==================== 单合约 K线订阅示例 ====================")
 
 	// 创建订阅（延迟启动，推荐方式）
-	sub, err := client.Series().Kline(ctx, "SHFE.au2602", 60*time.Second, 5)
+	sub, err := client.Series().Kline(ctx, symbol, 60*time.Second, 8010)
 	if err != nil {
 		fmt.Printf("订阅失败: %v\n", err)
 		return
@@ -112,14 +115,14 @@ func SingleKlineSubscriptionExample() {
 
 	// 方式 1: 使用通用更新回调（包含更新信息）
 	sub.OnUpdate(func(data *tqsdk.SeriesData, info *tqsdk.UpdateInfo) {
-		symData := data.GetSymbolKlines("SHFE.au2602")
+		symData := data.GetSymbolKlines(symbol)
 		if symData == nil {
 			return
 		}
 		if info.HasNewBar {
 			// 新增了一根 K线
 			fmt.Printf("🆕 新 K线! ID=%d, 数据量=%d\n",
-				info.NewBarIDs["SHFE.au2601"],
+				info.NewBarIDs[symbol],
 				len(symData.Data))
 
 			if len(symData.Data) > 0 {
@@ -155,7 +158,7 @@ func SingleKlineSubscriptionExample() {
 
 	// 方式 2: 使用专门的新 K线回调（传递完整序列数据，便于计算指标）
 	sub.OnNewBar(func(data *tqsdk.SeriesData) {
-		symData := data.GetSymbolKlines("SHFE.au2602")
+		symData := data.GetSymbolKlines(symbol)
 		if len(symData.Data) > 0 {
 			latest := symData.Data[len(symData.Data)-1]
 			fmt.Printf("🎯 新 K线: [%d] C=%.2f V=%d (序列长度=%d)\n",
@@ -175,7 +178,7 @@ func SingleKlineSubscriptionExample() {
 	})
 
 	sub.OnBarUpdate(func(data *tqsdk.SeriesData) {
-		symData := data.GetSymbolKlines("SHFE.au2602")
+		symData := data.GetSymbolKlines(symbol)
 		if len(symData.Data) > 0 {
 			latest := symData.Data[len(symData.Data)-1]
 			fmt.Printf("⏰ K线更新: [%d] C=%.2f (实时)\n",
@@ -184,10 +187,7 @@ func SingleKlineSubscriptionExample() {
 	})
 
 	// 所有回调注册完成后，启动监听（不会错过数据）
-	if err := sub.Start(); err != nil {
-		fmt.Printf("启动监听失败: %v\n", err)
-		return
-	}
+	sub.Start()
 	fmt.Println("✅ 订阅已启动")
 
 	// 运行 50 秒
@@ -321,10 +321,7 @@ func TickSubscriptionExample() {
 	})
 
 	// 所有回调注册完成后，启动监听（不会错过数据）
-	if err := sub.Start(); err != nil {
-		fmt.Printf("启动监听失败: %v\n", err)
-		return
-	}
+	sub.Start()
 	fmt.Println("✅ 订阅已启动")
 
 	// 运行 20 秒
