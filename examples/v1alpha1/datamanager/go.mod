@@ -1,8 +1,8 @@
-module github.com/pseudocodes/tqsdk-go/examples/trade
+module github.com/pseudocodes/tqsdk-go/examples/datamanager
 
 go 1.21
 
-replace github.com/pseudocodes/tqsdk-go => ../../
+replace github.com/pseudocodes/tqsdk-go => ../../../
 
 require github.com/pseudocodes/tqsdk-go v0.0.0
 

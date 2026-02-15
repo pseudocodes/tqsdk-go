@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny/v1alpha1"
 )
 
 // HistoryKlineWithLeftIDExample 使用 left_kline_id 订阅历史 K线

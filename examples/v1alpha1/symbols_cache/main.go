@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tqsdk "github.com/pseudocodes/tqsdk-go/shinny"
+	tqsdk "github.com/pseudocodes/tqsdk-go/shinny/v1alpha1"
 )
 
 func main() {
@@ -145,4 +145,3 @@ func example4(ctx context.Context, username, password string) {
 	fmt.Printf("✓ 使用自定义缓存目录: %s\n", cacheDir)
 	fmt.Println("✓ 缓存有效期: 1小时")
 }
-
