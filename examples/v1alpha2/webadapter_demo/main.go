@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -34,35 +33,16 @@ func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
 	addr := flag.String("addr", "127.0.0.1:9876", "HTTP listen address")
-	webDir := flag.String("web-dir", "", "path to tqsdk web UI directory (e.g. /path/to/tqsdk/web)")
+	webDir := flag.String("web-dir", "", "path to web UI directory (empty = use embedded)")
 	flag.Parse()
 
 	user := os.Getenv("SHINNYTECH_ID")
+	if user == "" {
+		user = "neuron"
+	}
 	password := os.Getenv("SHINNYTECH_PW")
-	if user == "" || password == "" {
-		log.Fatal("please set SHINNYTECH_ID and SHINNYTECH_PW environment variables")
-	}
-
-	// Auto-detect web dir from known location if not specified.
-	if *webDir == "" {
-		candidates := []string{
-			"./web",           // relative to tqsdk-go
-			"../../tqsdk/web", // from cmd/webadapter_demo
-			os.ExpandEnv("$HOME/tqsdk-python/tqsdk/web"),
-		}
-		for _, c := range candidates {
-			if info, err := os.Stat(c); err == nil && info.IsDir() {
-				*webDir = c
-				break
-			}
-		}
-	}
-
-	if *webDir == "" {
-		log.Println("警告: 未找到 web UI 目录，仅提供 WebSocket 接口。")
-		log.Println("  使用 -web-dir 指定 tqsdk/web 目录路径以启用网页预览。")
-	} else {
-		log.Printf("Web UI 目录: %s", *webDir)
+	if password == "" {
+		log.Fatal("please set SHINNYTECH_PW environment variable")
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -157,23 +137,25 @@ func main() {
 	}
 	defer func() { _ = adapter.Close() }()
 
+	// Build /url response for the frontend.
+	urlResp := map[string]any{
+		"ins_url": "https://openmd.shinnytech.com/t/md/symbols/latest.json",
+	}
+	if mdURL, err := wiring.Auth.ResolveMDURL(ctx, false, false); err == nil && mdURL != "" {
+		urlResp["md_url"] = mdURL
+	}
+
 	gwCfg := webadapter.GatewayConfig{
-		Addr:   *addr,
-		WebDir: *webDir,
-		// /url endpoint — the frontend fetches this to get server URLs.
-		URLResponse: map[string]any{
-			"ins_url": "https://openmd.shinnytech.com/t/md/symbols/latest.json",
-			"md_url":  fmt.Sprintf("ws://%s/ws", *addr),
-		},
+		Addr:        *addr,
+		WebDir:      *webDir,
+		URLResponse: urlResp,
 	}
 
 	gw := webadapter.NewGateway(adapter, gwCfg)
 
 	// Start gateway in background
 	go func() {
-		if *webDir != "" {
-			log.Printf("[2] 网页预览: http://%s", *addr)
-		}
+		log.Printf("[2] 网页预览: http://%s", *addr)
 		log.Printf("[2] WebSocket: ws://%s/ws", *addr)
 		log.Printf("[2] Snapshot:  http://%s/snapshot", *addr)
 		if err := gw.Start(ctx); err != nil {
