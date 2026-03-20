@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"math"
 	"os"
@@ -39,25 +38,16 @@ func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
 	addr := flag.String("addr", "127.0.0.1:9876", "HTTP listen address")
-	webDir := flag.String("web-dir", "", "path to tqsdk web UI directory")
+	webDir := flag.String("web-dir", "", "path to web UI directory (empty = use embedded)")
 	flag.Parse()
 
 	user := os.Getenv("SHINNYTECH_ID")
-	password := os.Getenv("SHINNYTECH_PW")
-	if user == "" || password == "" {
-		log.Fatal("please set SHINNYTECH_ID and SHINNYTECH_PW environment variables")
+	if user == "" {
+		user = "neuron"
 	}
-
-	if *webDir == "" {
-		for _, c := range []string{
-			"../../tqsdk/web",
-			os.ExpandEnv("$HOME/tqsdk-python/tqsdk/web"),
-		} {
-			if info, err := os.Stat(c); err == nil && info.IsDir() {
-				*webDir = c
-				break
-			}
-		}
+	password := os.Getenv("SHINNYTECH_PW")
+	if password == "" {
+		log.Fatal("please set SHINNYTECH_PW environment variable")
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -145,18 +135,21 @@ func main() {
 	}
 	defer func() { _ = adapter.Close() }()
 
+	// Build /url response for the frontend.
+	urlResp := map[string]any{
+		"ins_url": "https://openmd.shinnytech.com/t/md/symbols/latest.json",
+	}
+	if mdURL, err := wiring.Auth.ResolveMDURL(ctx, false, false); err == nil && mdURL != "" {
+		urlResp["md_url"] = mdURL
+	}
+
 	gw := webadapter.NewGateway(adapter, webadapter.GatewayConfig{
-		Addr:   *addr,
-		WebDir: *webDir,
-		URLResponse: map[string]any{
-			"ins_url": "https://openmd.shinnytech.com/t/md/symbols/latest.json",
-			"md_url":  fmt.Sprintf("ws://%s/ws", *addr),
-		},
+		Addr:        *addr,
+		WebDir:      *webDir,
+		URLResponse: urlResp,
 	})
 	go func() {
-		if *webDir != "" {
-			log.Printf("网页预览: http://%s", *addr)
-		}
+		log.Printf("网页预览: http://%s", *addr)
 		log.Printf("WebSocket: ws://%s/ws", *addr)
 		if err := gw.Start(ctx); err != nil {
 			log.Printf("Gateway: %v", err)

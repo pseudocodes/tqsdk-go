@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tqweb2</title>
+  <link rel="icon" href="/favicon.ico">
+  <script type="module" crossorigin src="/web/assets/index-D7smXnJ1.js"></script>
+  <link rel="stylesheet" crossorigin href="/web/assets/index-FqOFtJsV.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    ;(function () {
+      // 开发环境检测：Vite dev server 会在 DOM 中注入 type="module" src 含 @vite 的脚本
+      // 生产环境由 Python 后端 serve，不会有 Vite 的 HMR client
+      var isDev = !!document.querySelector('script[src*="@vite"]')
+        || location.port === '8080' && location.pathname === '/'
+
+      if (typeof window.TqsdkAddress === 'undefined') {
+        // 生产环境：页面由 Python 后端提供，直接用当前地址（支持随机端口）
+        // 开发环境：Vite dev server 和 Python 后端不在同一端口，需要指定后端地址
+        window.TqsdkAddress = isDev ? '127.0.0.1:53813' : location.host
+      }
+
+      if (typeof window.GetTqsdkUrl === 'undefined') {
+        var protocol = isDev ? 'http:' : location.protocol
+        window.GetTqsdkUrl = function () {
+          return fetch(protocol + '//' + window.TqsdkAddress + '/url')
+            .then(function (response) { return response.json() })
+            .catch(function () {
+              return {
+                ins_url: 'https://openmd.shinnytech.com/t/md/symbols/latest.json',
+                md_url: 'wss://openmd.shinnytech.com/t/md/front/mobile'
+              }
+            })
+        }
+      }
+
+      if (isDev) {
+        console.log('[TqSDK] 开发模式，后端地址:', window.TqsdkAddress)
+      }
+    })()
+  </script>
+</body>
+</html>
