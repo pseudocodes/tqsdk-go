@@ -1,1 +1,36 @@
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 *.log
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor (if not committed)
+# vendor/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+doc/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Example binaries
+/examples/v1alpha2/backtest_demo/backtest_demo
+/examples/v1alpha2/market_demo/market_demo
+/examples/v1alpha2/market_query_demo/market_query_demo
+/examples/v1alpha2/webadapter_demo/webadapter_demo
+/examples/v1alpha2/indicator_demo/indicator_demo
+/examples/v1alpha2/syncapi_demo/syncapi_demo
