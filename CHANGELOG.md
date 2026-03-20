@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-21
+
 ### Added
+
+- **v1alpha2 架构**: 全新设计的 v1alpha2 版本，采用分层架构
+  - `api/` — 核心接口定义层：`Client`、`MarketService`、`TradeService`、`AuthService` 等接口及类型
+  - `domain/` — 业务实现层：认证 (`AuthService`)、行情 (`MarketService`)、交易 (`TradeService`)、风控 (`RiskManager`)
+  - `infra/` — 基础设施层：WebSocket 连接管理 (`WSManager`)、JSON 编解码 (`codec`)、GraphQL 查询构建器 (`graphqlx`)
+  - `store/` — 数据存储层：行情存储 (`MarketStore`)、交易存储 (`TradeStore`)、交易状态存储 (`TradingStatusStore`)
+  - `app/` — 应用组装层：`NewWiring` / `NewDefaultClient` 一键构建完整客户端
+
+- **回测引擎** (`backtest/`): 完整的本地回测框架
+  - `runtime/` — 事件驱动内核 (`EventKernel`)、模拟时钟 (`Clock`)
+  - `data/` — 历史数据下载器、内存数据提供者 (`MemoryProvider`)、LRU 缓存
+  - `market/` — 模拟行情服务 (`SimMarketService`)，支持懒加载数据下载
+  - `trade/` — 模拟交易服务 (`SimTradeService`)、期货/期权撮合与结算
+  - `report/` — 回测报告：收益率、最大回撤、夏普率、索提诺比率、卡玛比率、胜率、盈亏比等指标计算与图表生成
+  - 支持 `app.NewBacktestWiring` 一键构建回测环境
+
+- **SyncApi** (`syncapi/`): 同步编程模型，对标 Python tqsdk 的 `wait_update` / `is_changing` 模式
+  - `QuoteRef` / `KlineRef` / `AccountRef` / `PositionRef` 等引用类型
+  - `WaitUpdate()` 阻塞等待数据更新
+  - `IsChanging()` 检测数据变化，支持字段级粒度
+
+- **WebAdapter** (`webadapter/`): 浏览器可视化适配层
+  - `Adapter` — 将 Client 事件转换为 tqsdk web UI 协议
+  - `Gateway` — HTTP/WebSocket 网关，提供 `/ws`、`/snapshot`、`/url` 端点
+  - `IndicatorOverlay` — 自定义指标叠加层，支持在 K 线图上绘制 MA 等指标
+
+- **v1alpha2 示例程序** (`examples/v1alpha2/`):
+  - `backtest_demo` — MA 均线交叉回测策略
+  - `indicator_demo` — 回测 + 自定义指标 Web 可视化
+  - `market_demo` — 行情订阅、Tick/K线下载器
+  - `market_query_demo` — GraphQL 查询、合约信息、期权链、历史主力合约、结算价、排名等
+  - `syncapi_demo` — 同步编程模型演示
+  - `webadapter_demo` — 回测 + Web UI 可视化
+  - 所有示例统一使用环境变量 `SHINNYTECH_ID` / `SHINNYTECH_PW` 进行认证
+
+- **新增依赖**: `bytedance/sonic` (高性能 JSON)、`tidwall/gjson` (JSON 路径查询)
 
 - **合约信息缓存机制**: 支持本地缓存合约信息，提高启动速度
   - 新增三种缓存策略：`CacheStrategyAlwaysNetwork`、`CacheStrategyPreferLocal`、`CacheStrategyAutoRefresh`（默认）
@@ -24,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 确保所有回调注册完成后再接收数据，不会错过早期数据
 
 ### Changed
+
+- **完善 `.gitignore`**: 添加 Go 构建产物、IDE 配置、OS 临时文件及 v1alpha2 示例二进制文件的忽略规则
 
 - **重构 Series API**: 改进订阅对象的创建和启动机制
   - `NewSeriesSubscription()` 不再自动启动监听
