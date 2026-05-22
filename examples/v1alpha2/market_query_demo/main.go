@@ -38,7 +38,6 @@ func main() {
 	if user == "" || password == "" {
 		log.Fatal("please set SHINNYTECH_ID and SHINNYTECH_PW environment variables")
 	}
-
 	cli, err := app.NewDefaultClient(app.Config{
 		User:     user,
 		Password: password,
@@ -85,6 +84,9 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("invalid -ranking-start: %w", err))
 	}
+
+	_ = settleStartDT
+	_ = rankingStartDT
 
 	fmt.Println("== Query Demo Start ==")
 	fmt.Printf("symbols=%v\n", syms)

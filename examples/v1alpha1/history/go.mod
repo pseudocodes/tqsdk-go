@@ -1,4 +1,4 @@
-module github.com/pseudocodes/tqsdk-go/examples/history
+module github.com/pseudocodes/tqsdk-go/examples/v1alpha1/history
 
 go 1.21
 

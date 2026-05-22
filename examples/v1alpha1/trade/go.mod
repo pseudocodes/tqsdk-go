@@ -1,4 +1,4 @@
-module github.com/pseudocodes/tqsdk-go/examples/trade
+module github.com/pseudocodes/tqsdk-go/examples/v1alpha1/trade
 
 go 1.21
 

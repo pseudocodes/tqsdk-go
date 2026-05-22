@@ -227,12 +227,14 @@ func (m *marketService) ensureStarted(ctx context.Context) error {
 	}
 	if m.wsURL == "" {
 		mdURL, err := m.auth.ResolveMDURL(ctx, false, false)
-		if err == nil && strings.TrimSpace(mdURL) != "" {
-			m.wsURL = mdURL
+		if err != nil {
+			return api.NewError(api.ErrAuthRequired, "resolve md url failed", err)
 		}
-		if m.wsURL == "" {
-			m.wsURL = "wss://api.shinnytech.com/t/nfmd/front/mobile"
+		mdURL = strings.TrimSpace(mdURL)
+		if mdURL == "" {
+			return api.NewError(api.ErrAuthRequired, "resolve md url returned empty", nil)
 		}
+		m.wsURL = mdURL
 	}
 	m.runCtx, m.cancel = context.WithCancel(context.Background())
 	m.ws = infra.NewWSManager(
