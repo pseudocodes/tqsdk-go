@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
 	"sync"
 	"time"
@@ -54,12 +56,17 @@ func (g *Gateway) Start(ctx context.Context) error {
 	mux.HandleFunc(g.cfg.SnapshotPath, g.handleSnapshot)
 
 	// Serve static web UI files (tqwebhelper compatible).
+	// If WebDir is set, serve from disk; otherwise use embedded assets.
 	if g.cfg.WebDir != "" {
 		webFS := http.FileServer(http.Dir(g.cfg.WebDir))
 		mux.Handle("/web/", http.StripPrefix("/web", webFS))
-		mux.HandleFunc("/", g.handleIndex)
-		mux.HandleFunc("/index.html", g.handleIndex)
+	} else {
+		sub, _ := fs.Sub(embeddedWeb, "web")
+		webFS := http.FileServer(http.FS(sub))
+		mux.Handle("/web/", http.StripPrefix("/web", webFS))
 	}
+	mux.HandleFunc("/", g.handleIndex)
+	mux.HandleFunc("/index.html", g.handleIndex)
 
 	// /url endpoint — returns ins_url, md_url, access_token for the frontend.
 	if g.cfg.URLResponse != nil {
@@ -215,7 +222,21 @@ func (g *Gateway) URL() string {
 }
 
 func (g *Gateway) handleIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, g.cfg.WebDir+"/index.html")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	if g.cfg.WebDir != "" {
+		http.ServeFile(w, r, g.cfg.WebDir+"/index.html")
+		return
+	}
+	f, err := embeddedWeb.Open("web/index.html")
+	if err != nil {
+		http.Error(w, "index.html not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	stat, _ := f.Stat()
+	http.ServeContent(w, r, "index.html", stat.ModTime(), f.(io.ReadSeeker))
 }
 
 func (g *Gateway) handleURL(w http.ResponseWriter, r *http.Request) {

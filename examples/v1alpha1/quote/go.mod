@@ -1,4 +1,4 @@
-module github.com/pseudocodes/tqsdk-go/examples/quote
+module github.com/pseudocodes/tqsdk-go/examples/v1alpha1/quote
 
 go 1.21
 

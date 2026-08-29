@@ -26,6 +26,131 @@ func WithLazyDownloader(downloader api.MarketService) Option {
 	return func(s *simMarketService) { s.downloader = downloader }
 }
 
+// tickRingBuffer is a fixed-capacity circular buffer for api.Tick values.
+// Push is O(1) with zero allocation; Tail returns the most recent n entries in O(n).
+type tickRingBuffer struct {
+	buf   []api.Tick // fixed length = cap
+	cap   int
+	head  int // next write position (0..cap-1)
+	count int // total items ever written (used to derive actual size)
+}
+
+func newTickRingBuffer(capacity int) *tickRingBuffer {
+	if capacity <= 0 {
+		capacity = 1
+	}
+	return &tickRingBuffer{
+		buf: make([]api.Tick, capacity),
+		cap: capacity,
+	}
+}
+
+// Push appends a tick, overwriting the oldest entry when full. O(1), no allocation.
+func (r *tickRingBuffer) Push(t api.Tick) {
+	r.buf[r.head] = t
+	r.head = (r.head + 1) % r.cap
+	r.count++
+}
+
+// Len returns the number of items currently in the buffer (<= cap).
+func (r *tickRingBuffer) Len() int {
+	if r.count < r.cap {
+		return r.count
+	}
+	return r.cap
+}
+
+// Tail returns the most recent `width` ticks as []*api.Tick.
+// The slice is left-padded with nil when fewer items are available,
+// matching the original buildTickFrame semantics.
+func (r *tickRingBuffer) Tail(width int) []*api.Tick {
+	out := make([]*api.Tick, width)
+	n := r.Len()
+	if n == 0 || width <= 0 {
+		return out
+	}
+	take := n
+	if take > width {
+		take = width
+	}
+	// start is the buf index of the oldest entry within the take window.
+	start := (r.head - take + r.cap) % r.cap
+	offset := width - take
+	for i := 0; i < take; i++ {
+		idx := (start + i) % r.cap
+		cp := r.buf[idx]
+		out[offset+i] = &cp
+	}
+	return out
+}
+
+// klineRingBuffer is a fixed-capacity circular buffer for api.Kline values.
+// Unlike tickRingBuffer, it provides PushOrUpdate semantics: if the incoming
+// kline has the same ID as the last entry, it updates in-place (EventKlineClose)
+// instead of appending (EventKlineOpen). Both operations are O(1).
+type klineRingBuffer struct {
+	buf   []api.Kline // fixed length = cap
+	cap   int
+	head  int // next write position (0..cap-1)
+	count int // total items appended (update does not increment)
+}
+
+func newKlineRingBuffer(capacity int) *klineRingBuffer {
+	if capacity <= 0 {
+		capacity = 1
+	}
+	return &klineRingBuffer{
+		buf: make([]api.Kline, capacity),
+		cap: capacity,
+	}
+}
+
+// PushOrUpdate appends k if its ID differs from the last entry, or updates
+// the last entry in-place if the ID matches. O(1), no allocation.
+func (r *klineRingBuffer) PushOrUpdate(k api.Kline) {
+	if r.Len() > 0 {
+		lastIdx := (r.head - 1 + r.cap) % r.cap
+		if r.buf[lastIdx].ID == k.ID {
+			r.buf[lastIdx] = k
+			return
+		}
+	}
+	r.buf[r.head] = k
+	r.head = (r.head + 1) % r.cap
+	r.count++
+}
+
+// Len returns the number of items currently in the buffer (<= cap).
+func (r *klineRingBuffer) Len() int {
+	if r.count < r.cap {
+		return r.count
+	}
+	return r.cap
+}
+
+// Tail returns the most recent `width` klines as []*api.Kline.
+// The slice is left-padded with nil when fewer items are available,
+// matching the original buildKlineFrame semantics.
+func (r *klineRingBuffer) Tail(width int) []*api.Kline {
+	out := make([]*api.Kline, width)
+	n := r.Len()
+	if n == 0 || width <= 0 {
+		return out
+	}
+	take := n
+	if take > width {
+		take = width
+	}
+	start := (r.head - take + r.cap) % r.cap
+	offset := width - take
+	for i := 0; i < take; i++ {
+		idx := (start + i) % r.cap
+		cp := r.buf[idx]
+		out[offset+i] = &cp
+	}
+	return out
+}
+
 type simMarketService struct {
 	rt         *runtime.EventKernel
 	provider   data.DataProvider
@@ -39,8 +164,8 @@ type simMarketService struct {
 
 	nextSubID int64
 	quotes    map[string]api.Quote
-	ticks     map[string][]api.Tick
-	klines    map[string]map[int64][]api.Kline
+	ticks     map[string]*tickRingBuffer
+	klines    map[string]map[int64]*klineRingBuffer
 
 	quoteSubs map[int64]*quoteSub
 	tickSubs  map[string]*tickSub
@@ -95,8 +220,8 @@ func NewSimMarketService(rt *runtime.EventKernel, dp data.DataProvider, opts ...
 		provider:  dp,
 		autoRun:   true,
 		quotes:    map[string]api.Quote{},
-		ticks:     map[string][]api.Tick{},
-		klines:    map[string]map[int64][]api.Kline{},
+		ticks:     map[string]*tickRingBuffer{},
+		klines:    map[string]map[int64]*klineRingBuffer{},
 		quoteSubs: map[int64]*quoteSub{},
 		tickSubs:  map[string]*tickSub{},
 		klineSubs: map[string]*klineSub{},
@@ -191,20 +316,24 @@ func (m *simMarketService) onBatch(batch runtime.MarketEventBatch) {
 		switch ev.EventType {
 		case runtime.EventTick:
 			if ev.Tick != nil {
-				m.ticks[ev.Symbol] = append(m.ticks[ev.Symbol], *ev.Tick)
+				ring := m.ticks[ev.Symbol]
+				if ring == nil {
+					ring = newTickRingBuffer(api.MarketMaxDataLength)
+					m.ticks[ev.Symbol] = ring
+				}
+				ring.Push(*ev.Tick)
 			}
 		case runtime.EventKlineOpen, runtime.EventKlineClose:
 			if ev.Kline != nil {
 				if m.klines[ev.Symbol] == nil {
-					m.klines[ev.Symbol] = map[int64][]api.Kline{}
+					m.klines[ev.Symbol] = map[int64]*klineRingBuffer{}
 				}
-				series := m.klines[ev.Symbol][ev.DurationNS]
-				if len(series) > 0 && series[len(series)-1].ID == ev.Kline.ID {
-					series[len(series)-1] = *ev.Kline
-				} else {
-					series = append(series, *ev.Kline)
+				ring := m.klines[ev.Symbol][ev.DurationNS]
+				if ring == nil {
+					ring = newKlineRingBuffer(api.MarketMaxDataLength)
+					m.klines[ev.Symbol][ev.DurationNS] = ring
 				}
-				m.klines[ev.Symbol][ev.DurationNS] = series
+				ring.PushOrUpdate(*ev.Kline)
 			}
 		}
 	}
@@ -332,6 +461,12 @@ func (m *simMarketService) SubscribeTicks(ctx context.Context, symbol string, da
 		}
 	}
 
+	// Pre-fill: fetch historical ticks before startDT so the first emitted
+	// frame is fully populated, matching Python TqBacktest behavior where
+	// set_chart uses focus_position=view_width to place focus_datetime at
+	// the right edge of the window.
+	m.prefillTicks(ctx, symbol, dataLength)
+
 	chartID := genID("BT_tick")
 	sub := &tickSub{chartID: chartID, symbol: symbol, width: dataLength, opts: op, ch: make(chan api.TickEvent, 128), done: make(chan struct{}), lastID: -1}
 	m.tickSubs[chartID] = sub
@@ -441,6 +576,12 @@ func (m *simMarketService) SubscribeKlines(ctx context.Context, symbols []string
 		}
 	}
 
+	// Pre-fill ring buffer with historical klines before startDT so the first
+	// emitted frame is fully populated (matches Python TqBacktest behavior).
+	for _, sym := range symbols {
+		m.prefillKlines(ctx, sym, durationSeconds, dataLength)
+	}
+
 	chartID := genID("BT_kline")
 	sub := &klineSub{chartID: chartID, symbols: append([]string(nil), symbols...), durationN: durN, width: dataLength, opts: op, ch: make(chan api.KlineEvent, 128), done: make(chan struct{}), lastID: -1}
 	m.klineSubs[chartID] = sub
@@ -543,44 +684,107 @@ func (m *simMarketService) emitConnEvent(ev api.ConnEvent) {
 
 func (m *simMarketService) buildTickFrame(symbol string, width int) []*api.Tick {
 	m.mu.RLock()
-	series := append([]api.Tick(nil), m.ticks[symbol]...)
+	ring := m.ticks[symbol]
 	m.mu.RUnlock()
-	if width <= 0 {
+	if ring == nil || width <= 0 {
 		return nil
 	}
-	out := make([]*api.Tick, width)
-	start := len(series) - width
-	if start < 0 {
-		start = 0
+	return ring.Tail(width)
+}
+
+// prefillTicks downloads up to `width` ticks before startDT from the live
+// downloader and seeds the ring buffer, so the first emitted frame is fully
+// populated. This mirrors Python's _gen_serial which uses
+// focus_position=view_width to place focus_datetime at the window's right
+// edge, loading historical ticks before the backtest start.
+//
+// Must be called while m.mu is held. Best-effort: errors are silently ignored.
+func (m *simMarketService) prefillTicks(ctx context.Context, symbol string, width int) {
+	if m.downloader == nil || width <= 0 {
+		return
 	}
-	off := width - (len(series) - start)
-	for i := start; i < len(series); i++ {
-		cp := series[i]
-		out[off] = &cp
-		off++
+	// Skip if ring buffer already has data (kernel already replayed events).
+	if ring := m.ticks[symbol]; ring != nil && ring.Len() > 0 {
+		return
 	}
-	return out
+	cfg := m.rt.Config()
+	startDT := cfg.StartDT
+	pos := width
+	batch, err := m.downloader.QueryTicksPage(ctx, api.TickQueryReq{
+		Symbol:    symbol,
+		Begin:     api.KlineBegin{FocusDatetime: &startDT, FocusPosition: &pos},
+		ViewWidth: width,
+	})
+	if err != nil {
+		return
+	}
+	ring := m.ticks[symbol]
+	if ring == nil {
+		ring = newTickRingBuffer(api.MarketMaxDataLength)
+		m.ticks[symbol] = ring
+	}
+	startNS := startDT.UnixNano()
+	for _, t := range batch.Frame {
+		if t != nil && t.Datetime < startNS {
+			ring.Push(*t)
+		}
+	}
 }
 
 func (m *simMarketService) buildKlineFrame(symbol string, durN int64, width int) []*api.Kline {
 	m.mu.RLock()
-	series := append([]api.Kline(nil), m.klines[symbol][durN]...)
+	ring := m.klines[symbol][durN]
 	m.mu.RUnlock()
-	if width <= 0 {
+	if ring == nil || width <= 0 {
 		return nil
 	}
-	out := make([]*api.Kline, width)
-	start := len(series) - width
-	if start < 0 {
-		start = 0
+	return ring.Tail(width)
+}
+
+// prefillKlines downloads up to `width` klines before startDT from the live
+// downloader and seeds the ring buffer, so the first emitted frame is fully
+// populated. This mirrors Python's _gen_serial which uses
+// focus_position=view_width to place focus_datetime at the window's right
+// edge, loading historical klines before the backtest start.
+//
+// Must be called while m.mu is held. Best-effort: errors are silently ignored.
+func (m *simMarketService) prefillKlines(ctx context.Context, symbol string, durationSeconds int, width int) {
+	if m.downloader == nil || width <= 0 {
+		return
 	}
-	off := width - (len(series) - start)
-	for i := start; i < len(series); i++ {
-		cp := series[i]
-		out[off] = &cp
-		off++
+	durN := int64(durationSeconds) * int64(time.Second)
+	// Skip if ring buffer already has data (kernel already replayed events).
+	if durMap := m.klines[symbol]; durMap != nil {
+		if ring := durMap[durN]; ring != nil && ring.Len() > 0 {
+			return
+		}
 	}
-	return out
+	cfg := m.rt.Config()
+	startDT := cfg.StartDT
+	pos := width
+	batch, err := m.downloader.QueryKlinesPage(ctx, api.KlineQueryReq{
+		Symbols:         []string{symbol},
+		DurationSeconds: durationSeconds,
+		Begin:           api.KlineBegin{FocusDatetime: &startDT, FocusPosition: &pos},
+		ViewWidth:       width,
+	})
+	if err != nil {
+		return
+	}
+	if m.klines[symbol] == nil {
+		m.klines[symbol] = map[int64]*klineRingBuffer{}
+	}
+	ring := m.klines[symbol][durN]
+	if ring == nil {
+		ring = newKlineRingBuffer(api.MarketMaxDataLength)
+		m.klines[symbol][durN] = ring
+	}
+	startNS := startDT.UnixNano()
+	for _, k := range batch.Frame1D {
+		if k != nil && k.Datetime < startNS {
+			ring.PushOrUpdate(*k)
+		}
+	}
 }
 
 func (m *simMarketService) QueryGraphQL(ctx context.Context, query string, variables map[string]any) (api.GraphQLResult, error) {

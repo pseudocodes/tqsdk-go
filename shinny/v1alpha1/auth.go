@@ -80,9 +80,9 @@ type AuthResp struct {
 	RefreshExpiresIn int64  `json:"refresh_expires_in"`
 	RefreshToken     string `json:"refresh_token"`
 	TokenType        string `json:"token_type"`
-	NotBeforePolicy  int    `json:"not-before-policy"`
-	SessionState     string `json:"session_state"`
-	Scope            string `json:"scope"`
+	NotBeforePolicy  int    `json:"not-before-policy,omitempty"`
+	SessionState     string `json:"session_state,omitempty"`
+	Scope            string `json:"scope,omitempty"`
 }
 
 type AccessTokenClaims struct {
@@ -107,7 +107,7 @@ type AccessTokenClaims struct {
 	CreationTime      int64  `json:"creation_time"`
 	Setname           bool   `json:"setname"`
 	Mobile            string `json:"mobile"`
-	MobileVerified    string `json:"mobileVerified"`
+	MobileVerified    bool   `json:"mobileVerified"`
 	PreferredUsername string `json:"preferred_username"`
 	ID                string `json:"id"`
 	Username          string `json:"username"`
