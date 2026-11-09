@@ -1,0 +1,6 @@
+expired_quotes.json.gz is derived from tqsdk/expired_quotes.json.lzma in tqsdk-python 3.10.4
+(https://github.com/shinnytech/tqsdk-python), Copyright Shinny Technology, licensed under the
+Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+Changes: decompressed, fields whose value is NaN removed, keys sorted, re-compressed with gzip
+by gen.py in this directory. See SOURCE for the source checksum.

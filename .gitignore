@@ -27,10 +27,34 @@ doc/
 .DS_Store
 Thumbs.db
 
-# Example binaries
+# Example binaries (go build / go build main.go)
+/examples/*/*/main
+
+# v1alpha1
+/examples/v1alpha1/datamanager/datamanager
+/examples/v1alpha1/history/history
+/examples/v1alpha1/quote/quote
+/examples/v1alpha1/symbols_cache/symbols_cache
+/examples/v1alpha1/symbols_cache/symbols_cache_example
+/examples/v1alpha1/trade/trade
+
+# v1alpha2
 /examples/v1alpha2/backtest_demo/backtest_demo
 /examples/v1alpha2/market_demo/market_demo
 /examples/v1alpha2/market_query_demo/market_query_demo
 /examples/v1alpha2/webadapter_demo/webadapter_demo
 /examples/v1alpha2/indicator_demo/indicator_demo
 /examples/v1alpha2/syncapi_demo/syncapi_demo
+
+# v1alpha3
+/examples/v1alpha3/backtest/backtest
+/examples/v1alpha3/download/download
+/examples/v1alpha3/kline/kline
+/examples/v1alpha3/multikline/multikline
+/examples/v1alpha3/paper/paper
+/examples/v1alpha3/quote/quote
+/examples/v1alpha3/strategy/strategy
+/examples/v1alpha3/targetpos/targetpos
+/examples/v1alpha3/tick/tick
+
+.v1alpha3-sync.json
