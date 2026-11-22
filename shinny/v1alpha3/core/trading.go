@@ -35,6 +35,9 @@ type AccountConfig struct {
 	Redial     func(context.Context) (Source, error) // 注入连接断开后的重建函数；nil 表示不重连
 	ClientInfo LoginClientInfo
 	NewOrderID func() string // 报单未指定 ClientOrderID 时的生成器；nil 使用随机 ID
+	// NoAutoAdd 为 true 时不把账户加入天勤授权列表（Python 账户声明的 auto_add=false）。
+	// 快期模拟账户由天勤登录身份直接识别，设为 true。
+	NoAutoAdd bool
 }
 
 // AccountSpec 是账户声明：在指定 Trading 上登记一个未启动的账户句柄，不拨号、不推进、不报单。
@@ -269,7 +272,7 @@ func (a *AccountHandle) Start(ctx context.Context) error {
 	a.started = true
 	t.rt.mu.Unlock()
 
-	req := auth.Request{Service: auth.Trade, BrokerID: a.cfg.BrokerID, AccountID: a.cfg.UserName}
+	req := auth.Request{Service: auth.Trade, BrokerID: a.cfg.BrokerID, AccountID: a.cfg.UserName, NoAutoAdd: a.cfg.NoAutoAdd}
 	access, err := t.cfg.Auth.Authorize(ctx, req)
 	if err != nil {
 		a.unstart()

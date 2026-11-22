@@ -24,6 +24,9 @@ type Request struct {
 	// Backtest 表示接入回测行情服务（名称服务 backtest=true）；同 Python 回测模式，
 	// 授权结果对 futr / sec / lmt_idx 视为已授权。
 	Backtest bool
+	// NoAutoAdd 为 true 时不把交易账户加入授权列表（Python 账户声明的 auto_add=false）。
+	// 快期模拟账户由天勤登录身份直接识别，不需要 update-grant-accounts。
+	NoAutoAdd bool
 }
 
 // Access 是授权结果。Endpoint 为空时由调用方的 URL 配置决定地址。

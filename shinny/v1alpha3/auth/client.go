@@ -33,6 +33,7 @@ type Client struct {
 	mu           sync.Mutex
 	accessToken  string
 	refreshToken string
+	authID       atomic.Pointer[string] // 登录 JWT 的 sub；登录后只读。
 	grants       atomic.Pointer[Grants] // 不可变快照；读取不等待登录或路由发现。
 	mdURL        string
 	btURL        string // 回测行情地址，与实盘地址分开缓存
@@ -55,8 +56,9 @@ const (
 	clientSecret = "be30b9f4-6862-488a-99ad-21bde0400081"
 )
 
-// Authorize 实现 Provider。行情返回名称服务的 mdurl；交易确保账户授权（自动添加，同 Python TqAccount）
-// 并返回期货公司的交易网关地址。
+// Authorize 实现 Provider。行情返回名称服务的 mdurl；交易默认确保账户授权
+// （自动添加，同 Python TqAccount），并返回期货公司的交易网关地址。
+// Request.NoAutoAdd 为 true 时跳过账户授权更新（快期模拟账户）。
 func (c *Client) Authorize(ctx context.Context, r Request) (Access, error) {
 	if strings.TrimSpace(c.UserName) == "" || strings.TrimSpace(c.Password) == "" {
 		return Access{}, errors.New("auth: 快期账户与密码不能为空")
@@ -88,8 +90,10 @@ func (c *Client) Authorize(ctx context.Context, r Request) (Access, error) {
 		if r.BrokerID == "" || r.AccountID == "" {
 			return Access{}, errors.New("auth: trade authorization needs BrokerID and AccountID")
 		}
-		if err := c.ensureAccount(ctx, r.AccountID); err != nil {
-			return Access{}, err
+		if !r.NoAutoAdd {
+			if err := c.ensureAccount(ctx, r.AccountID); err != nil {
+				return Access{}, err
+			}
 		}
 		key := r.BrokerID + "\x00" + r.AccountID
 		if c.tdURLs[key] == "" {
@@ -113,6 +117,19 @@ func (c *Client) Grants() Grants {
 		return Grants{Features: slices.Clone(g.Features), Accounts: slices.Clone(g.Accounts)}
 	}
 	return Grants{}
+}
+
+// AuthID 返回登录账户的授权 ID（JWT 的 sub，同 Python TqAuth._auth_id）。
+// 未登录或 token 不含 sub 时返回空字符串。快期模拟账户用它作为资金账号和密码，
+// 调用方不要把返回值写入日志或展示给终端用户。
+func (c *Client) AuthID() string {
+	if c == nil {
+		return ""
+	}
+	if id := c.authID.Load(); id != nil {
+		return *id
+	}
+	return ""
 }
 
 // HasFeature 报告账户是否有某功能授权（futr / sec / lmt_idx / tq_trading_status ...）。
@@ -194,30 +211,35 @@ func (c *Client) requestToken(ctx context.Context, form url.Values) error {
 	if err := json.Unmarshal(data, &tok); err != nil || tok.AccessToken == "" {
 		return fmt.Errorf("auth: bad token response: %v", err)
 	}
-	grants, err := decodeGrants(tok.AccessToken)
+	claims, err := decodeClaims(tok.AccessToken)
 	if err != nil {
 		return fmt.Errorf("auth: decode access token: %w", err)
 	}
 	c.accessToken, c.refreshToken = tok.AccessToken, tok.RefreshToken
-	c.grants.Store(&grants)
+	c.grants.Store(&claims.Grants)
+	c.authID.Store(&claims.Sub)
 	return nil
 }
 
-// decodeGrants 读取 JWT payload 的 grants（不校验签名，同 Python）。
-func decodeGrants(token string) (Grants, error) {
+// tokenClaims 是登录 JWT 中本包使用的字段。
+type tokenClaims struct {
+	Sub    string `json:"sub"`
+	Grants Grants `json:"grants"`
+}
+
+// decodeClaims 读取 JWT payload 的 sub 与 grants（不校验签名，同 Python）。
+func decodeClaims(token string) (tokenClaims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
-		return Grants{}, errors.New("invalid jwt")
+		return tokenClaims{}, errors.New("invalid jwt")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return Grants{}, err
+		return tokenClaims{}, err
 	}
-	var claims struct {
-		Grants Grants `json:"grants"`
-	}
+	var claims tokenClaims
 	err = json.Unmarshal(payload, &claims)
-	return claims.Grants, err
+	return claims, err
 }
 
 // ensureAccount 确保期货账户已在授权列表中，否则添加后刷新 token。调用方持有 c.mu。
