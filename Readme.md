@@ -384,7 +384,7 @@ func requestInfo(ctx context.Context, api *tqapi.API) error {
 `auth.Client` 的天勤账户用于服务鉴权。交易账户另用 `core.AccountConfig` 声明 `BrokerID`、`UserName`、`Password` 等字段，两种凭证用途不同。
 
 - `trade.Dial` 创建交易客户端，`OpenAccount` 登记并启动一个账户；需要在启动前注册事件或风控时，使用 `PrepareAccount` → `Events` / `SetCommandGuard` → `Start`。
-- `tqapi.Config.Account` 接收一个账户声明；多账户使用 `Accounts`，二者不能同时设置。网络账户用 `core.AccountConfig`，本地模拟账户用 `sim.New(...)`。
+- `tqapi.Config.Account` 接收一个账户声明；多账户使用 `Accounts`，二者不能同时设置。网络账户用 `core.AccountConfig`，本地模拟账户用 `sim.New(...)`，快期模拟账户用 `kqsim.New(...)`。
 - 声明账户后 `tqapi.New` 自动创建交易组件并启动账户，但不保证 `Ready`。单账户通过 `api.Account()` 获取句柄，多账户用 `api.Trade.Account(id)`。
 - `Account()`、`Position()`、`Orders()`、`Trades()` 等方法读取已提交状态；`Submit` 和 `Cancel` 发出报撤单命令。
 - `Submit` 成功只表示本地接受并排队，不表示网关接受或成交。后续通过订单状态、交易事件和成交记录确认结果。
@@ -444,6 +444,24 @@ func watchAccount(ctx context.Context) error {
 ```
 
 `OpenCountLimit` 统计本地接受的开仓报单次数，`OpenVolumeLimit` 统计开仓数量，`OrderRateLimit` 统计指定交易所最近一秒本地接受的报单和撤单数量。它们通过本地守卫执行，不等同于交易所或网关风控。
+
+## 快期模拟账户
+
+`kqsim` 声明天勤快期模拟账户（对应 Python `TqKq`）。它与 `sim` 的本地 TqSim 不同：资金、持仓、委托和成交由天勤服务端保存，可在快期 APP、快期专业版、快期 v2/v3 查看。
+
+```go
+client := auth.NewClient(os.Getenv("TQ_AUTH_USER"), os.Getenv("TQ_AUTH_PASS"))
+api, err := tqapi.New(ctx, tqapi.Config{
+	Auth:    client,
+	Market:  &core.MarketConfig{}, // auth_id 在行情授权后取得
+	Account: kqsim.New(client, kqsim.Config{}),
+})
+```
+
+- 主模拟账号：用天勤登录返回的 `auth_id` 同时作为资金账号和密码。
+- 辅模拟账号：`kqsim.Config{Number: 1..99}`，需要专业版 `tq_ma` 权限。
+- 内部设置 `NoAutoAdd`，不调用 `update-grant-accounts`，与 Python `TqKq` 的 `auto_add=false` 一致。
+- `auth.Client.AuthID()` 在登录前为空；因此 `tqapi.Config` 必须配置 `Market`，让行情授权先完成。
 
 ## 本地模拟交易与回测
 
@@ -725,6 +743,7 @@ go run ./examples/v1alpha3/targetpos -paper -symbol SHFE.rb2701 -volume 2 -hold 
 | `trade` | 后台推进的交易客户端与 Session |
 | `tqapi` | 显式推进、Pulse、账户装配与协作式任务调度 |
 | `sim` | 模拟账户、撮合账本、实时模拟与报告 |
+| `kqsim` | 快期模拟账户声明（服务端模拟，对应 Python TqKq） |
 | `backtest` | 离线/在线历史数据、虚拟时间和回测驱动 |
 | `targetpos` | 目标持仓执行、拆单、追价与收尾 |
 | `risk` | 可选本地报撤单规则 |

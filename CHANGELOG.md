@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **v1alpha3 快期模拟账户**: 新增 `kqsim` 包，声明天勤快期模拟账户（对应 Python `TqKq`）。主账号用天勤登录的 `auth_id` 作为资金账号和密码；辅账号 1~99 需要专业版 `tq_ma` 权限。
+- **v1alpha3 鉴权**: `auth.Client.AuthID()` 暴露登录 JWT 的 `sub`；交易账户新增 `NoAutoAdd`，跳过 `update-grant-accounts`，与 Python `auto_add=false` 对齐。
+
 ## [0.3.0] - 2026-03-21
 
 ### Added
